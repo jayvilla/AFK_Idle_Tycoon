@@ -40,6 +40,18 @@ const ZoneUnlockResponse = remoteEventsFolder.WaitForChild(
 const PlayerDataUpdate = remoteEventsFolder.WaitForChild(
   "PlayerDataUpdate"
 ) as RemoteEvent;
+const AFKRewardClaimRequest = remoteEventsFolder.WaitForChild(
+  "AFKRewardClaimRequest"
+) as RemoteEvent;
+const AFKRewardClaimResponse = remoteEventsFolder.WaitForChild(
+  "AFKRewardClaimResponse"
+) as RemoteEvent;
+const DailyLoginClaimRequest = remoteEventsFolder.WaitForChild(
+  "DailyLoginClaimRequest"
+) as RemoteEvent;
+const DailyLoginClaimResponse = remoteEventsFolder.WaitForChild(
+  "DailyLoginClaimResponse"
+) as RemoteEvent;
 
 // Create ScreenGui for UI
 const screenGui = new Instance("ScreenGui");
@@ -189,6 +201,173 @@ function getRebirthCost(count: number): number {
   return math.floor(BASE_COST * math.pow(MULTIPLIER, count));
 }
 
+// Phase 6 - Retention UI
+// Create retention frame (positioned below gamepass frame)
+const retentionFrame = new Instance("Frame");
+retentionFrame.Name = "RetentionFrame";
+retentionFrame.Size = new UDim2(0, 300, 0, 200);
+retentionFrame.Position = new UDim2(0, 20, 0, 410); // Below gamepass frame (200 + 200 + 10 spacing)
+retentionFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
+retentionFrame.BorderSizePixel = 0;
+retentionFrame.Parent = screenGui;
+
+const retentionCorner = new Instance("UICorner");
+retentionCorner.CornerRadius = new UDim(0, 8);
+retentionCorner.Parent = retentionFrame;
+
+const retentionTitle = new Instance("TextLabel");
+retentionTitle.Name = "Title";
+retentionTitle.Size = new UDim2(1, 0, 0, 30);
+retentionTitle.Position = new UDim2(0, 0, 0, 0);
+retentionTitle.BackgroundTransparency = 1;
+retentionTitle.Text = "🎁 Rewards";
+retentionTitle.TextColor3 = new Color3(1, 1, 1);
+retentionTitle.TextSize = 18;
+retentionTitle.Font = Enum.Font.GothamBold;
+retentionTitle.Parent = retentionFrame;
+
+const retentionPadding = new Instance("UIPadding");
+retentionPadding.PaddingLeft = new UDim(0, 10);
+retentionPadding.PaddingTop = new UDim(0, 5);
+retentionPadding.Parent = retentionTitle;
+
+// Daily login reward button
+const dailyLoginButton = new Instance("TextButton");
+dailyLoginButton.Name = "DailyLoginButton";
+dailyLoginButton.Size = new UDim2(1, -20, 0, 35);
+dailyLoginButton.Position = new UDim2(0, 10, 0, 35);
+dailyLoginButton.BackgroundColor3 = new Color3(0.2, 0.6, 1);
+dailyLoginButton.Text = "📅 Claim Daily Reward";
+dailyLoginButton.TextColor3 = new Color3(1, 1, 1);
+dailyLoginButton.TextSize = 14;
+dailyLoginButton.Font = Enum.Font.Gotham;
+dailyLoginButton.Parent = retentionFrame;
+
+const dailyLoginCorner = new Instance("UICorner");
+dailyLoginCorner.CornerRadius = new UDim(0, 6);
+dailyLoginCorner.Parent = dailyLoginButton;
+
+// AFK reward button
+const afkRewardButton = new Instance("TextButton");
+afkRewardButton.Name = "AFKRewardButton";
+afkRewardButton.Size = new UDim2(1, -20, 0, 35);
+afkRewardButton.Position = new UDim2(0, 10, 0, 75);
+afkRewardButton.BackgroundColor3 = new Color3(0.8, 0.4, 0.2);
+afkRewardButton.Text = "⏰ Claim AFK Reward";
+afkRewardButton.TextColor3 = new Color3(1, 1, 1);
+afkRewardButton.TextSize = 14;
+afkRewardButton.Font = Enum.Font.Gotham;
+afkRewardButton.Parent = retentionFrame;
+
+const afkRewardCorner = new Instance("UICorner");
+afkRewardCorner.CornerRadius = new UDim(0, 6);
+afkRewardCorner.Parent = afkRewardButton;
+
+// Idle streak display
+const idleStreakLabel = new Instance("TextLabel");
+idleStreakLabel.Name = "IdleStreakLabel";
+idleStreakLabel.Size = new UDim2(1, -20, 0, 25);
+idleStreakLabel.Position = new UDim2(0, 10, 0, 115);
+idleStreakLabel.BackgroundTransparency = 1;
+idleStreakLabel.Text = "⏱️ Idle Streak: 0 min";
+idleStreakLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
+idleStreakLabel.TextSize = 12;
+idleStreakLabel.Font = Enum.Font.Gotham;
+idleStreakLabel.TextXAlignment = Enum.TextXAlignment.Left;
+idleStreakLabel.Parent = retentionFrame;
+
+// Session time display
+const sessionTimeLabel = new Instance("TextLabel");
+sessionTimeLabel.Name = "SessionTimeLabel";
+sessionTimeLabel.Size = new UDim2(1, -20, 0, 25);
+sessionTimeLabel.Position = new UDim2(0, 10, 0, 140);
+sessionTimeLabel.BackgroundTransparency = 1;
+sessionTimeLabel.Text = "📊 Total Playtime: 0 min";
+sessionTimeLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
+sessionTimeLabel.TextSize = 12;
+sessionTimeLabel.Font = Enum.Font.Gotham;
+sessionTimeLabel.TextXAlignment = Enum.TextXAlignment.Left;
+sessionTimeLabel.Parent = retentionFrame;
+
+// Login streak display
+const loginStreakLabel = new Instance("TextLabel");
+loginStreakLabel.Name = "LoginStreakLabel";
+loginStreakLabel.Size = new UDim2(1, -20, 0, 25);
+loginStreakLabel.Position = new UDim2(0, 10, 0, 165);
+loginStreakLabel.BackgroundTransparency = 1;
+loginStreakLabel.Text = "🔥 Login Streak: Day 0";
+loginStreakLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
+loginStreakLabel.TextSize = 12;
+loginStreakLabel.Font = Enum.Font.Gotham;
+loginStreakLabel.TextXAlignment = Enum.TextXAlignment.Left;
+loginStreakLabel.Parent = retentionFrame;
+
+// Track retention data
+let idleStreak = 0;
+let totalSessionTime = 0;
+let loginStreak = 0;
+
+// Handle daily login button click
+dailyLoginButton.MouseButton1Click.Connect(() => {
+  DailyLoginClaimRequest.FireServer();
+});
+
+// Handle AFK reward button click
+afkRewardButton.MouseButton1Click.Connect(() => {
+  AFKRewardClaimRequest.FireServer();
+});
+
+// Listen for daily login response
+DailyLoginClaimResponse.OnClientEvent.Connect(
+  (success: boolean, message: string) => {
+    if (success) {
+      task.spawn(() => {
+        dailyLoginButton.BackgroundColor3 = new Color3(0, 1, 0);
+        task.wait(0.5);
+        dailyLoginButton.BackgroundColor3 = new Color3(0.2, 0.6, 1);
+      });
+      print(`[Client] ${message}`);
+    } else {
+      task.spawn(() => {
+        dailyLoginButton.BackgroundColor3 = new Color3(1, 0.2, 0.2);
+        task.wait(0.5);
+        dailyLoginButton.BackgroundColor3 = new Color3(0.2, 0.6, 1);
+      });
+      warn(`[Client] Daily login failed: ${message}`);
+    }
+  }
+);
+
+// Listen for AFK reward response
+AFKRewardClaimResponse.OnClientEvent.Connect(
+  (success: boolean, message: string) => {
+    if (success) {
+      task.spawn(() => {
+        afkRewardButton.BackgroundColor3 = new Color3(0, 1, 0);
+        task.wait(0.5);
+        afkRewardButton.BackgroundColor3 = new Color3(0.8, 0.4, 0.2);
+      });
+      print(`[Client] ${message}`);
+    } else {
+      task.spawn(() => {
+        afkRewardButton.BackgroundColor3 = new Color3(1, 0.2, 0.2);
+        task.wait(0.5);
+        afkRewardButton.BackgroundColor3 = new Color3(0.8, 0.4, 0.2);
+      });
+      warn(`[Client] AFK reward failed: ${message}`);
+    }
+  }
+);
+
+// Update retention UI
+function updateRetentionUI() {
+  idleStreakLabel.Text = `⏱️ Idle Streak: ${idleStreak} min`;
+  sessionTimeLabel.Text = `📊 Total Playtime: ${formatNumber(
+    totalSessionTime
+  )} min`;
+  loginStreakLabel.Text = `🔥 Login Streak: Day ${loginStreak}`;
+}
+
 // Track player data
 let upgradeLevels: { [id: string]: number } = {};
 let unlockedZones: string[] = ["zone_1"];
@@ -255,6 +434,16 @@ const upgradesLayout = new Instance("UIListLayout");
 upgradesLayout.Padding = new UDim(0, 5);
 upgradesLayout.SortOrder = Enum.SortOrder.LayoutOrder;
 upgradesLayout.Parent = upgradesList;
+
+// Listen for layout changes to update canvas size (after layout is created)
+upgradesLayout.GetPropertyChangedSignal("AbsoluteContentSize").Connect(() => {
+  upgradesFrame.CanvasSize = new UDim2(
+    0,
+    0,
+    0,
+    upgradesLayout.AbsoluteContentSize.Y + 30 // Extra padding to ensure last item is fully visible
+  );
+});
 
 // Upgrade config (simplified - in production, import from shared)
 const UPGRADES = [
@@ -389,12 +578,12 @@ function updateUpgradeUI(): void {
     }
   }
 
-  // Update canvas size
+  // Update canvas size with padding to ensure last item is visible
   upgradesFrame.CanvasSize = new UDim2(
     0,
     0,
     0,
-    upgradesLayout.AbsoluteContentSize.Y
+    upgradesLayout.AbsoluteContentSize.Y + 30 // Extra padding to ensure last item is fully visible
   );
 }
 
@@ -446,12 +635,12 @@ function updateZoneUI(): void {
     }
   }
 
-  // Update canvas size
+  // Update canvas size with padding to ensure last item is visible
   upgradesFrame.CanvasSize = new UDim2(
     0,
     0,
     0,
-    upgradesLayout.AbsoluteContentSize.Y
+    upgradesLayout.AbsoluteContentSize.Y + 30 // Extra padding to ensure last item is fully visible
   );
 }
 
@@ -619,11 +808,11 @@ function updateGamepassUI(): void {
   // Boost display is handled separately
 }
 
-// Developer Products UI
+// Developer Products UI (positioned below retention frame)
 const productsFrame = new Instance("Frame");
 productsFrame.Name = "ProductsFrame";
 productsFrame.Size = new UDim2(0, 200, 0, 150);
-productsFrame.Position = new UDim2(0, 20, 0, 410);
+productsFrame.Position = new UDim2(0, 20, 0, 620); // Below retention frame (410 + 200 + 10 spacing)
 productsFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 productsFrame.BorderSizePixel = 0;
 productsFrame.Parent = screenGui;
@@ -730,7 +919,7 @@ rebirthSkipButton.MouseButton1Click.Connect(() => {
 const boostDisplayFrame = new Instance("Frame");
 boostDisplayFrame.Name = "BoostDisplay";
 boostDisplayFrame.Size = new UDim2(0, 200, 0, 80);
-boostDisplayFrame.Position = new UDim2(0, 20, 0, 570);
+boostDisplayFrame.Position = new UDim2(0, 20, 0, 780); // Below products frame (620 + 150 + 10 spacing)
 boostDisplayFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 boostDisplayFrame.BorderSizePixel = 0;
 boostDisplayFrame.Parent = screenGui;
@@ -799,6 +988,9 @@ PlayerDataUpdate.OnClientEvent.Connect(
     hasDoubleCash: boolean;
     hasAutoCollect: boolean;
     activeBoosts: { [productId: number]: number };
+    idleStreak?: number;
+    totalSessionTime?: number;
+    loginStreak?: number;
   }) => {
     upgradeLevels = data.upgradeLevels;
     unlockedZones = data.unlockedZones;
@@ -806,10 +998,15 @@ PlayerDataUpdate.OnClientEvent.Connect(
     hasDoubleCash = data.hasDoubleCash;
     hasAutoCollect = data.hasAutoCollect;
     activeBoosts = data.activeBoosts;
+    if (data.idleStreak !== undefined) idleStreak = data.idleStreak;
+    if (data.totalSessionTime !== undefined)
+      totalSessionTime = data.totalSessionTime;
+    if (data.loginStreak !== undefined) loginStreak = data.loginStreak;
     updateUpgradeUI();
     updateZoneUI();
     updateGamepassUI();
     updateBoostDisplay();
+    updateRetentionUI();
   }
 );
 

@@ -97,6 +97,14 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
           typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
         activeBoosts:
           typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+        lastLoginDate:
+          typedData.lastLoginDate ?? DEFAULT_PLAYER_DATA.lastLoginDate,
+        loginStreak: typedData.loginStreak ?? DEFAULT_PLAYER_DATA.loginStreak,
+        idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
+        totalSessionTime:
+          typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
+        afkRewardCooldown:
+          typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
       };
     }
 
@@ -116,6 +124,14 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
       hasAutoCollect:
         typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
       activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+      lastLoginDate:
+        typedData.lastLoginDate ?? DEFAULT_PLAYER_DATA.lastLoginDate,
+      loginStreak: typedData.loginStreak ?? DEFAULT_PLAYER_DATA.loginStreak,
+      idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
+      totalSessionTime:
+        typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
+      afkRewardCooldown:
+        typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
     };
 
     return migrated;

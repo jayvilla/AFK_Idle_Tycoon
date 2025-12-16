@@ -12,6 +12,12 @@ export interface PlayerSaveData {
 	hasDoubleCash: boolean; // 2× Cash gamepass status
 	hasAutoCollect: boolean; // Auto-collect gamepass status
 	activeBoosts: { [productId: number]: number }; // Product ID -> expiration timestamp
+	// Phase 6 - Retention
+	lastLoginDate: string; // YYYY-MM-DD format
+	loginStreak: number; // Consecutive days logged in
+	idleStreak: number; // Minutes of continuous play
+	totalSessionTime: number; // Total minutes played (all time)
+	afkRewardCooldown: number; // Timestamp when next AFK reward is available
 }
 
 /**
@@ -28,6 +34,11 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	hasDoubleCash: false,
 	hasAutoCollect: false,
 	activeBoosts: {},
+	lastLoginDate: "",
+	loginStreak: 0,
+	idleStreak: 0,
+	totalSessionTime: 0,
+	afkRewardCooldown: 0,
 };
 
 /**

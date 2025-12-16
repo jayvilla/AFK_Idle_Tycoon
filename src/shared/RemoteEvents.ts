@@ -53,5 +53,25 @@ const PlayerDataUpdate = new Instance("RemoteEvent");
 PlayerDataUpdate.Name = "PlayerDataUpdate";
 PlayerDataUpdate.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate };
+// AFK reward claim request (client -> server)
+const AFKRewardClaimRequest = new Instance("RemoteEvent");
+AFKRewardClaimRequest.Name = "AFKRewardClaimRequest";
+AFKRewardClaimRequest.Parent = remoteFolder;
+
+// AFK reward claim response (server -> client)
+const AFKRewardClaimResponse = new Instance("RemoteEvent");
+AFKRewardClaimResponse.Name = "AFKRewardClaimResponse";
+AFKRewardClaimResponse.Parent = remoteFolder;
+
+// Daily login reward claim request (client -> server)
+const DailyLoginClaimRequest = new Instance("RemoteEvent");
+DailyLoginClaimRequest.Name = "DailyLoginClaimRequest";
+DailyLoginClaimRequest.Parent = remoteFolder;
+
+// Daily login reward claim response (server -> client)
+const DailyLoginClaimResponse = new Instance("RemoteEvent");
+DailyLoginClaimResponse.Name = "DailyLoginClaimResponse";
+DailyLoginClaimResponse.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse };
 

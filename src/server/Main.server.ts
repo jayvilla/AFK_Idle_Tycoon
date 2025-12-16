@@ -1,8 +1,9 @@
 import { Players, DataStoreService, MarketplaceService } from "@rbxts/services";
-import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate } from "../shared/RemoteEvents";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
 import { GAMEPASS_IDS, PRODUCT_IDS, BOOST_DURATION_1HOUR, BOOST_MULTIPLIER_2X, BOOST_MULTIPLIER_5X } from "../shared/MonetizationConfig";
+import { getCurrentDateString, isYesterday, getIdleStreakMultiplier, getDailyLoginReward, getAFKReward, AFK_REWARD_INTERVAL, PREMIUM_SESSION_MULTIPLIER, PREMIUM_REWARD_MULTIPLIER } from "../shared/RetentionConfig";
 
 print("AFK Tycoon TypeScript server running");
 
@@ -29,6 +30,8 @@ interface PlayerData {
 	saveData: PlayerSaveData;
 	sessionStartTime: number;
 	lastSaveTime: number; // Last time we saved to DataStore
+	idleStreakStartTime: number; // When current idle streak started
+	lastActivityTime: number; // Last time player was active (for AFK detection)
 }
 
 // Store player data in memory
@@ -85,19 +88,24 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		if (!typedData.version || typedData.version < currentVersion) {
 			print(`[DataStore] Migrating data from version ${typedData.version ?? "unknown"} to ${currentVersion}`);
 			
-			// Return migrated data (for now, just ensure defaults)
-			return {
-				version: currentVersion,
-				currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
-				lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
-				rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
-			upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
-			unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
-			hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
-			hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
-			hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
-			activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
-		};
+		// Return migrated data (for now, just ensure defaults)
+		return {
+			version: currentVersion,
+			currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
+			lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
+			rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+		upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
+		unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+		hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+		hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
+		hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
+		activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+		lastLoginDate: typedData.lastLoginDate ?? DEFAULT_PLAYER_DATA.lastLoginDate,
+		loginStreak: typedData.loginStreak ?? DEFAULT_PLAYER_DATA.loginStreak,
+		idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
+		totalSessionTime: typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
+		afkRewardCooldown: typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
+	};
 	}
 	
 	// Ensure all fields exist even if version is current
@@ -112,6 +120,11 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
 		hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
 		activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+		lastLoginDate: typedData.lastLoginDate ?? DEFAULT_PLAYER_DATA.lastLoginDate,
+		loginStreak: typedData.loginStreak ?? DEFAULT_PLAYER_DATA.loginStreak,
+		idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
+		totalSessionTime: typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
+		afkRewardCooldown: typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
 	};
 		
 		return migrated;
@@ -264,6 +277,9 @@ function sendPlayerDataUpdate(player: Player): void {
 		hasDoubleCash: playerData.saveData.hasDoubleCash,
 		hasAutoCollect: playerData.saveData.hasAutoCollect,
 		activeBoosts: playerData.saveData.activeBoosts,
+		idleStreak: playerData.saveData.idleStreak,
+		totalSessionTime: playerData.saveData.totalSessionTime,
+		loginStreak: playerData.saveData.loginStreak,
 	});
 }
 
@@ -307,17 +323,45 @@ async function initializePlayer(player: Player): Promise<void> {
 			saveData.currency += offlineEarnings;
 		}
 		
+		// Process daily login reward
+		const currentDate = getCurrentDateString();
+		const hasClaimedToday = saveData.lastLoginDate === currentDate;
+		const isStreakContinuing = isYesterday(saveData.lastLoginDate);
+		
+		if (!hasClaimedToday) {
+			if (isStreakContinuing) {
+				// Continue streak
+				saveData.loginStreak += 1;
+			} else if (saveData.lastLoginDate !== "") {
+				// Streak broken, reset to 1
+				saveData.loginStreak = 1;
+			} else {
+				// First login
+				saveData.loginStreak = 1;
+			}
+			saveData.lastLoginDate = currentDate;
+		}
+		
 		// Create in-memory player data
+		const currentTime = os.time();
 		const playerData: PlayerData = {
 			saveData: saveData,
-			sessionStartTime: os.time(),
-			lastSaveTime: os.time(),
+			sessionStartTime: currentTime,
+			lastSaveTime: currentTime,
+			idleStreakStartTime: currentTime,
+			lastActivityTime: currentTime,
 		};
 		
 		playerDataMap.set(player, playerData);
 		
 		// Check gamepass ownership
 		checkGamepassOwnership(player);
+		
+		// Notify client about daily login reward availability
+		if (!hasClaimedToday) {
+			const dailyReward = getDailyLoginReward(saveData.loginStreak);
+			DailyLoginClaimResponse.FireClient(player, true, `Daily Login Reward: $${dailyReward} (Day ${saveData.loginStreak})`);
+		}
 		
 		// Send initial currency, rebirth count, and player data to client
 		CurrencyUpdate.FireClient(player, saveData.currency);
@@ -333,6 +377,7 @@ async function initializePlayer(player: Player): Promise<void> {
 		warn(`[CurrencyManager] Failed to load data for ${player.Name}, using defaults: ${error}`);
 		
 		// Use default data on error
+		const currentTime = os.time();
 		const defaultData: PlayerData = {
 			saveData: {
 				version: DATA_VERSION,
@@ -345,9 +390,16 @@ async function initializePlayer(player: Player): Promise<void> {
 				hasDoubleCash: false,
 				hasAutoCollect: false,
 				activeBoosts: {},
+				lastLoginDate: "",
+				loginStreak: 0,
+				idleStreak: 0,
+				totalSessionTime: 0,
+				afkRewardCooldown: 0,
 			},
-			sessionStartTime: os.time(),
-			lastSaveTime: os.time(),
+			sessionStartTime: currentTime,
+			lastSaveTime: currentTime,
+			idleStreakStartTime: currentTime,
+			lastActivityTime: currentTime,
 		};
 		
 		playerDataMap.set(player, defaultData);
@@ -413,10 +465,28 @@ function addCurrency(player: Player, amount: number): void {
  * AFK Income Loop - runs every second
  */
 function processAFKIncome(): void {
+	const currentTime = os.time();
+	
 	for (const [player, playerData] of playerDataMap) {
 		// Only process if player is still in game
 		if (!player.Parent) {
 			continue;
+		}
+
+		// Update idle streak (in minutes)
+		const idleStreakMinutes = math.floor((currentTime - playerData.idleStreakStartTime) / 60);
+		playerData.saveData.idleStreak = idleStreakMinutes;
+		
+		// Update session time tracking (accumulate every minute)
+		const sessionElapsed = currentTime - playerData.sessionStartTime;
+		if (sessionElapsed >= 60) {
+			const minutesToAdd = math.floor(sessionElapsed / 60);
+			playerData.saveData.totalSessionTime += minutesToAdd;
+			playerData.sessionStartTime += minutesToAdd * 60; // Add minutes, not reset
+			// Send update to client every 5 minutes
+			if (playerData.saveData.totalSessionTime % 5 === 0) {
+				sendPlayerDataUpdate(player);
+			}
 		}
 
 		// Calculate income with all multipliers
@@ -424,6 +494,7 @@ function processAFKIncome(): void {
 		const upgradeMultiplier = getTotalUpgradeMultiplier(playerData);
 		const zoneMultiplier = getCurrentZoneMultiplier(playerData);
 		const boostMultiplier = getActiveBoostMultiplier(playerData);
+		const idleStreakMultiplier = getIdleStreakMultiplier(idleStreakMinutes);
 		
 		// Gamepass multipliers
 		let gamepassMultiplier = 1;
@@ -431,7 +502,13 @@ function processAFKIncome(): void {
 			gamepassMultiplier *= 2; // 2× Cash gamepass
 		}
 		
-		const totalMultiplier = rebirthMultiplier * upgradeMultiplier * zoneMultiplier * boostMultiplier * gamepassMultiplier;
+		// Premium player session multiplier
+		let premiumMultiplier = 1;
+		if (playerData.saveData.hasVIP || playerData.saveData.hasDoubleCash) {
+			premiumMultiplier = PREMIUM_SESSION_MULTIPLIER;
+		}
+		
+		const totalMultiplier = rebirthMultiplier * upgradeMultiplier * zoneMultiplier * boostMultiplier * gamepassMultiplier * idleStreakMultiplier * premiumMultiplier;
 		const income = BASE_INCOME_PER_SECOND * totalMultiplier;
 
 		// Add currency
@@ -663,6 +740,16 @@ ZoneUnlockRequest.OnServerEvent.Connect((player, ...args) => {
 	}
 });
 
+// Handle AFK reward claim requests
+AFKRewardClaimRequest.OnServerEvent.Connect((player) => {
+	handleAFKRewardClaim(player);
+});
+
+// Handle daily login reward claim requests
+DailyLoginClaimRequest.OnServerEvent.Connect((player) => {
+	handleDailyLoginClaim(player);
+});
+
 /**
  * Process gamepass purchase
  */
@@ -815,6 +902,82 @@ async function checkGamepassOwnership(player: Player): Promise<void> {
 	}
 	
 	sendPlayerDataUpdate(player);
+}
+
+/**
+ * Handle AFK reward claim request
+ */
+function handleAFKRewardClaim(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		AFKRewardClaimResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+	
+	const currentTime = os.time();
+	const idleStreakMinutes = math.floor((currentTime - playerData.idleStreakStartTime) / 60);
+	
+	// Check if reward is available
+	if (currentTime < playerData.saveData.afkRewardCooldown) {
+		const timeRemaining = playerData.saveData.afkRewardCooldown - currentTime;
+		AFKRewardClaimResponse.FireClient(player, false, `Reward available in ${math.ceil(timeRemaining / 60)} minutes`);
+		return;
+	}
+	
+	// Calculate reward
+	const reward = getAFKReward(idleStreakMinutes);
+	
+	// Apply premium multiplier if applicable
+	let finalReward = reward;
+	if (playerData.saveData.hasVIP || playerData.saveData.hasDoubleCash) {
+		finalReward = math.floor(reward * PREMIUM_REWARD_MULTIPLIER);
+	}
+	
+	// Grant reward
+	addCurrency(player, finalReward);
+	
+	// Set cooldown
+	playerData.saveData.afkRewardCooldown = currentTime + AFK_REWARD_INTERVAL;
+	
+	AFKRewardClaimResponse.FireClient(player, true, `Claimed $${finalReward} AFK Reward!`);
+	print(`[Retention] ${player.Name} claimed AFK reward: $${finalReward} (${idleStreakMinutes} min streak)`);
+}
+
+/**
+ * Handle daily login reward claim request
+ */
+function handleDailyLoginClaim(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		DailyLoginClaimResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+	
+	const currentDate = getCurrentDateString();
+	
+	// Check if already claimed today
+	if (playerData.saveData.lastLoginDate === currentDate) {
+		DailyLoginClaimResponse.FireClient(player, false, "Daily reward already claimed today");
+		return;
+	}
+	
+	// Calculate reward
+	const reward = getDailyLoginReward(playerData.saveData.loginStreak);
+	
+	// Apply premium multiplier if applicable
+	let finalReward = reward;
+	if (playerData.saveData.hasVIP || playerData.saveData.hasDoubleCash) {
+		finalReward = math.floor(reward * PREMIUM_REWARD_MULTIPLIER);
+	}
+	
+	// Grant reward
+	addCurrency(player, finalReward);
+	
+	// Update login date (already updated in initializePlayer, but ensure it's set)
+	playerData.saveData.lastLoginDate = currentDate;
+	
+	DailyLoginClaimResponse.FireClient(player, true, `Daily Login Reward: $${finalReward} (Day ${playerData.saveData.loginStreak})`);
+	print(`[Retention] ${player.Name} claimed daily login reward: $${finalReward} (Day ${playerData.saveData.loginStreak})`);
 }
 
 print("[CurrencyManager] Service initialized");
