@@ -1,42 +1,273 @@
-import { Players } from "@rbxts/services";
+import { Players, DataStoreService } from "@rbxts/services";
 import { CurrencyUpdate } from "../shared/RemoteEvents";
+import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION } from "../shared/DataTypes";
 
 print("AFK Tycoon TypeScript server running");
 
 // Configuration
-const BASE_INCOME_PER_SECOND = 1;
 const INCOME_TICK_INTERVAL = 1; // seconds
+const OFFLINE_EARNINGS_CAP_HOURS = 24; // Max 24 hours of offline earnings
+const OFFLINE_EARNINGS_MULTIPLIER = 0.5; // 50% of normal income when offline
+const BASE_INCOME_PER_SECOND = 1; // Base income per second
 
-// Player data interface
+// DataStore configuration
+const DATASTORE_NAME = "PlayerData";
+const MAX_RETRIES = 5;
+const RETRY_DELAY = 1; // seconds
+const SAVE_INTERVAL = 30; // Auto-save every 30 seconds
+
+// Get DataStore
+const dataStore = DataStoreService.GetDataStore(DATASTORE_NAME);
+
+// Track pending saves
+const pendingSaves = new Map<number, boolean>();
+
+// Player data interface (in-memory)
 interface PlayerData {
-	currency: number;
+	saveData: PlayerSaveData;
 	sessionStartTime: number;
+	lastSaveTime: number; // Last time we saved to DataStore
 }
 
-// Store player data in memory (Phase 2 will move to DataStore)
+// Store player data in memory
 const playerDataMap = new Map<Player, PlayerData>();
 
 /**
- * Initialize player data when they join
+ * Get player's UserId as a key
  */
-function initializePlayer(player: Player): void {
-	const playerData: PlayerData = {
-		currency: 0,
-		sessionStartTime: os.time(),
-	};
-
-	playerDataMap.set(player, playerData);
-
-	// Send initial currency to client
-	CurrencyUpdate.FireClient(player, playerData.currency);
-
-	print(`[CurrencyManager] Initialized player ${player.Name} with ${playerData.currency} currency`);
+function getPlayerKey(userId: number): string {
+	return `Player_${userId}`;
 }
 
 /**
- * Remove player data when they leave
+ * Retry wrapper for DataStore operations
  */
-function removePlayer(player: Player): void {
+async function retryDataStoreOperation<T>(
+	operation: () => T,
+	operationName: string,
+	userId: number,
+): Promise<T> {
+	let lastError: unknown;
+	
+	for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+		const [success, result] = pcall(operation);
+		
+		if (success) {
+			if (attempt > 1) {
+				print(`[DataStore] ${operationName} succeeded on attempt ${attempt} for user ${userId}`);
+			}
+			return result as T;
+		}
+		
+		lastError = result;
+		warn(`[DataStore] ${operationName} failed (attempt ${attempt}/${MAX_RETRIES}) for user ${userId}: ${result}`);
+		
+		if (attempt < MAX_RETRIES) {
+			task.wait(RETRY_DELAY * attempt); // Exponential backoff
+		}
+	}
+	
+	error(`[DataStore] ${operationName} failed after ${MAX_RETRIES} attempts for user ${userId}: ${lastError}`);
+}
+
+/**
+ * Migrate old data format to current version
+ */
+function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
+	// For now, just ensure version is set
+	// In future phases, add migration logic here
+	if (typeIs(data, "table")) {
+		const typedData = data as Partial<PlayerSaveData>;
+		
+		// If data exists but version is missing/old, migrate it
+		if (!typedData.version || typedData.version < currentVersion) {
+			print(`[DataStore] Migrating data from version ${typedData.version ?? "unknown"} to ${currentVersion}`);
+			
+			// Return migrated data (for now, just ensure defaults)
+			return {
+				version: currentVersion,
+				currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
+				lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
+				rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+			};
+		}
+		
+		return typedData as PlayerSaveData;
+	}
+	
+	// Invalid data, return defaults
+	return { ...DEFAULT_PLAYER_DATA, version: currentVersion };
+}
+
+/**
+ * Load player data from DataStore
+ */
+async function loadPlayerData(userId: number): Promise<PlayerSaveData> {
+	const key = getPlayerKey(userId);
+	
+	return retryDataStoreOperation(() => {
+		const [success, data] = pcall(() => dataStore.GetAsync(key));
+		
+		if (!success) {
+			error(`Failed to get data for ${key}: ${data}`);
+		}
+		
+		if (data === undefined) {
+			// New player, return default data
+			print(`[DataStore] New player detected: ${userId}`);
+			return { ...DEFAULT_PLAYER_DATA, version: DATA_VERSION };
+		}
+		
+		// Migrate and return data
+		return migrateData(data, DATA_VERSION);
+	}, "LoadPlayerData", userId);
+}
+
+/**
+ * Save player data to DataStore
+ */
+async function savePlayerData(userId: number, data: PlayerSaveData): Promise<void> {
+	const key = getPlayerKey(userId);
+	
+	// Update save time
+	data.lastSaveTime = os.time();
+	data.version = DATA_VERSION;
+	
+	// Mark as pending
+	pendingSaves.set(userId, true);
+	
+	try {
+		await retryDataStoreOperation(() => {
+			const [success] = pcall(() => dataStore.SetAsync(key, data));
+			
+			if (!success) {
+				error(`Failed to save data for ${key}`);
+			}
+			
+			print(`[DataStore] Saved data for user ${userId} (currency: ${data.currency})`);
+			return undefined; // Return void
+		}, "SavePlayerData", userId);
+	} finally {
+		// Remove pending flag
+		pendingSaves.delete(userId);
+	}
+}
+
+/**
+ * Check if a player has a pending save
+ */
+function hasPendingSave(userId: number): boolean {
+	return pendingSaves.has(userId);
+}
+
+/**
+ * Calculate offline earnings based on time difference
+ */
+function calculateOfflineEarnings(lastSaveTime: number): number {
+	if (lastSaveTime === 0) {
+		return 0; // New player, no offline earnings
+	}
+
+	const currentTime = os.time();
+	const timeDiff = currentTime - lastSaveTime;
+	
+	// Cap offline earnings (convert hours to seconds)
+	const maxOfflineSeconds = OFFLINE_EARNINGS_CAP_HOURS * 3600;
+	const cappedTimeDiff = math.min(timeDiff, maxOfflineSeconds);
+	
+	// Calculate earnings (50% of normal income rate)
+	const offlineEarnings = math.floor(cappedTimeDiff * BASE_INCOME_PER_SECOND * OFFLINE_EARNINGS_MULTIPLIER);
+	
+	if (offlineEarnings > 0) {
+		const hoursOffline = math.floor(timeDiff / 3600);
+		print(`[CurrencyManager] Player was offline for ${hoursOffline} hours, earning ${offlineEarnings} currency`);
+	}
+	
+	return offlineEarnings;
+}
+
+/**
+ * Initialize player data when they join (async - loads from DataStore)
+ */
+async function initializePlayer(player: Player): Promise<void> {
+	try {
+		// Load data from DataStore
+		const saveData = await loadPlayerData(player.UserId);
+		
+		// Calculate offline earnings
+		const offlineEarnings = calculateOfflineEarnings(saveData.lastSaveTime);
+		if (offlineEarnings > 0) {
+			saveData.currency += offlineEarnings;
+		}
+		
+		// Create in-memory player data
+		const playerData: PlayerData = {
+			saveData: saveData,
+			sessionStartTime: os.time(),
+			lastSaveTime: os.time(),
+		};
+		
+		playerDataMap.set(player, playerData);
+		
+		// Send initial currency to client
+		CurrencyUpdate.FireClient(player, saveData.currency);
+		
+		if (offlineEarnings > 0) {
+			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline)`);
+		} else {
+			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency`);
+		}
+	} catch (error) {
+		warn(`[CurrencyManager] Failed to load data for ${player.Name}, using defaults: ${error}`);
+		
+		// Use default data on error
+		const defaultData: PlayerData = {
+			saveData: {
+				version: DATA_VERSION,
+				currency: 0,
+				lastSaveTime: 0,
+				rebirthCount: 0,
+			},
+			sessionStartTime: os.time(),
+			lastSaveTime: os.time(),
+		};
+		
+		playerDataMap.set(player, defaultData);
+		CurrencyUpdate.FireClient(player, 0);
+	}
+}
+
+/**
+ * Save player data to DataStore
+ */
+async function savePlayer(player: Player): Promise<void> {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[CurrencyManager] Attempted to save data for ${player.Name} but they have no data`);
+		return;
+	}
+	
+	// Don't save if there's already a pending save
+	if (hasPendingSave(player.UserId)) {
+		warn(`[CurrencyManager] Save already pending for ${player.Name}, skipping`);
+		return;
+	}
+	
+	try {
+		await savePlayerData(player.UserId, playerData.saveData);
+		playerData.lastSaveTime = os.time();
+	} catch (error) {
+		warn(`[CurrencyManager] Failed to save data for ${player.Name}: ${error}`);
+	}
+}
+
+/**
+ * Remove player data when they leave (save first)
+ */
+async function removePlayer(player: Player): Promise<void> {
+	// Save data before removing
+	await savePlayer(player);
+	
 	playerDataMap.delete(player);
 	print(`[CurrencyManager] Removed player ${player.Name} from currency system`);
 }
@@ -52,12 +283,12 @@ function addCurrency(player: Player, amount: number): void {
 	}
 
 	// Server-authoritative: only server can modify currency
-	playerData.currency += amount;
+	playerData.saveData.currency += amount;
 
 	// Update client
-	CurrencyUpdate.FireClient(player, playerData.currency);
+	CurrencyUpdate.FireClient(player, playerData.saveData.currency);
 
-	print(`[CurrencyManager] Added ${amount} currency to ${player.Name}. New total: ${playerData.currency}`);
+	print(`[CurrencyManager] Added ${amount} currency to ${player.Name}. New total: ${playerData.saveData.currency}`);
 }
 
 /**
@@ -76,6 +307,26 @@ function processAFKIncome(): void {
 		// Add currency
 		addCurrency(player, income);
 	}
+}
+
+/**
+ * Auto-save loop - saves player data periodically
+ */
+function startAutoSaveLoop(): void {
+	task.spawn(() => {
+		while (true) {
+			task.wait(SAVE_INTERVAL);
+			
+			// Save all players
+			for (const [player] of playerDataMap) {
+				if (player.Parent) {
+					savePlayer(player);
+				}
+			}
+		}
+	});
+	
+	print("[CurrencyManager] Auto-save loop started");
 }
 
 /**
@@ -99,12 +350,19 @@ for (const player of Players.GetPlayers()) {
 }
 
 // Handle new players
-Players.PlayerAdded.Connect(initializePlayer);
+Players.PlayerAdded.Connect((player) => {
+	initializePlayer(player);
+});
 
 // Handle leaving players
-Players.PlayerRemoving.Connect(removePlayer);
+Players.PlayerRemoving.Connect((player) => {
+	removePlayer(player);
+});
 
 // Start AFK income loop
 startIncomeLoop();
+
+// Start auto-save loop
+startAutoSaveLoop();
 
 print("[CurrencyManager] Service initialized");

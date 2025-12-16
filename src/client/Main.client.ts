@@ -1,9 +1,16 @@
-import { Players } from "@rbxts/services";
-import { CurrencyUpdate } from "../shared/RemoteEvents";
+import { Players, ReplicatedStorage } from "@rbxts/services";
 
 // Get the local player
 const player = Players.LocalPlayer;
 const playerGui = player.WaitForChild("PlayerGui") as PlayerGui;
+
+// Wait for RemoteEvent to be created by server
+const remoteEventsFolder = ReplicatedStorage.WaitForChild(
+  "RemoteEvents"
+) as Folder;
+const CurrencyUpdate = remoteEventsFolder.WaitForChild(
+  "CurrencyUpdate"
+) as RemoteEvent;
 
 // Create ScreenGui for UI
 const screenGui = new Instance("ScreenGui");
@@ -44,7 +51,7 @@ padding.Parent = currencyLabel;
 
 // Listen for currency updates from server
 CurrencyUpdate.OnClientEvent.Connect((newCurrency: number) => {
-	currencyLabel.Text = `💰 $${formatNumber(newCurrency)}`;
+  currencyLabel.Text = `💰 $${formatNumber(newCurrency)}`;
 });
 
 print("[Client] Currency UI initialized");
@@ -53,13 +60,12 @@ print("[Client] Currency UI initialized");
  * Format large numbers (e.g., 1000 -> "1K", 1000000 -> "1M")
  */
 function formatNumber(num: number): string {
-	if (num >= 1000000000) {
-		return `${math.floor(num / 1000000000 * 100) / 100}B`;
-	} else if (num >= 1000000) {
-		return `${math.floor(num / 1000000 * 100) / 100}M`;
-	} else if (num >= 1000) {
-		return `${math.floor(num / 1000 * 100) / 100}K`;
-	}
-	return tostring(math.floor(num));
+  if (num >= 1000000000) {
+    return `${math.floor((num / 1000000000) * 100) / 100}B`;
+  } else if (num >= 1000000) {
+    return `${math.floor((num / 1000000) * 100) / 100}M`;
+  } else if (num >= 1000) {
+    return `${math.floor((num / 1000) * 100) / 100}K`;
+  }
+  return tostring(math.floor(num));
 }
-
