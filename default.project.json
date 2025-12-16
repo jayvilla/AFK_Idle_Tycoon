@@ -1,0 +1,37 @@
+{
+  "name": "AFK_Idle_Tycoon",
+  "tree": {
+    "$className": "DataModel",
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": {
+        "$className": "Folder",
+        "$path": "out/server"
+      }
+    },
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$className": "Folder",
+        "$path": "out/shared"
+      },
+      "node_modules": {
+        "$className": "Folder",
+        "$path": "include",
+        "@rbxts": {
+          "$path": "node_modules/@rbxts"
+        }
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "out/client"
+      }
+    }
+  }
+}

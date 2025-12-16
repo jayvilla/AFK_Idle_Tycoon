@@ -1,0 +1,22 @@
+{
+  "name": "afk-idle-tycoon",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "roblox-ts build",
+    "watch": "roblox-ts build --watch",
+    "rojo": "rojo serve"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.896",
+    "roblox-ts": "^3.0.0"
+  },
+  "dependencies": {
+    "@rbxts/services": "^1.6.0"
+  }
+}
