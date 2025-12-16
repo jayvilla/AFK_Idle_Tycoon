@@ -28,3 +28,29 @@ export const DATA_VERSION = 1;
  */
 export const BASE_INCOME_PER_SECOND = 1;
 
+/**
+ * Rebirth system configuration
+ */
+export const REBIRTH_BASE_COST = 1000; // Base cost for first rebirth
+export const REBIRTH_COST_MULTIPLIER = 2.5; // Cost multiplier per rebirth
+export const REBIRTH_INCOME_MULTIPLIER = 1.5; // Income multiplier per rebirth
+
+/**
+ * Calculate rebirth requirement based on rebirth count
+ * Formula: baseCost * (multiplier ^ rebirthCount)
+ */
+export function getRebirthCost(rebirthCount: number): number {
+	return math.floor(REBIRTH_BASE_COST * math.pow(REBIRTH_COST_MULTIPLIER, rebirthCount));
+}
+
+/**
+ * Calculate total income multiplier from rebirths
+ * Formula: (incomeMultiplier ^ rebirthCount)
+ */
+export function getRebirthIncomeMultiplier(rebirthCount: number): number {
+	if (rebirthCount === 0) {
+		return 1;
+	}
+	return math.pow(REBIRTH_INCOME_MULTIPLIER, rebirthCount);
+}
+

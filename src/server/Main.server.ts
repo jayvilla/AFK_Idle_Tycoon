@@ -1,6 +1,6 @@
 import { Players, DataStoreService } from "@rbxts/services";
-import { CurrencyUpdate } from "../shared/RemoteEvents";
-import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION } from "../shared/DataTypes";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate } from "../shared/RemoteEvents";
+import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 
 print("AFK Tycoon TypeScript server running");
 
@@ -209,13 +209,14 @@ async function initializePlayer(player: Player): Promise<void> {
 		
 		playerDataMap.set(player, playerData);
 		
-		// Send initial currency to client
+		// Send initial currency and rebirth count to client
 		CurrencyUpdate.FireClient(player, saveData.currency);
+		RebirthCountUpdate.FireClient(player, saveData.rebirthCount);
 		
 		if (offlineEarnings > 0) {
-			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline)`);
+			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline), ${saveData.rebirthCount} rebirths`);
 		} else {
-			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency`);
+			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency, ${saveData.rebirthCount} rebirths`);
 		}
 	} catch (error) {
 		warn(`[CurrencyManager] Failed to load data for ${player.Name}, using defaults: ${error}`);
@@ -301,12 +302,54 @@ function processAFKIncome(): void {
 			continue;
 		}
 
-		// Calculate income (base income per second)
-		const income = BASE_INCOME_PER_SECOND;
+		// Calculate income with rebirth multiplier
+		const rebirthMultiplier = getRebirthIncomeMultiplier(playerData.saveData.rebirthCount);
+		const income = BASE_INCOME_PER_SECOND * rebirthMultiplier;
 
 		// Add currency
 		addCurrency(player, income);
 	}
+}
+
+/**
+ * Handle rebirth request from client
+ */
+function handleRebirth(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Rebirth] Player ${player.Name} has no data`);
+		RebirthResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+
+	const currentRebirthCount = playerData.saveData.rebirthCount;
+	const rebirthCost = getRebirthCost(currentRebirthCount);
+	const currentCurrency = playerData.saveData.currency;
+
+	// Validate player has enough currency
+	if (currentCurrency < rebirthCost) {
+		const shortfall = rebirthCost - currentCurrency;
+		RebirthResponse.FireClient(player, false, `Need ${shortfall} more currency to rebirth!`);
+		print(`[Rebirth] ${player.Name} attempted rebirth but only has ${currentCurrency}/${rebirthCost} currency`);
+		return;
+	}
+
+	// Perform rebirth
+	playerData.saveData.rebirthCount += 1;
+	playerData.saveData.currency = 0; // Reset currency
+	playerData.sessionStartTime = os.time(); // Reset session time
+
+	// Update client with new currency
+	CurrencyUpdate.FireClient(player, 0);
+
+	// Send success response and update rebirth count
+	RebirthResponse.FireClient(player, true, `Rebirth ${playerData.saveData.rebirthCount} complete! Income multiplier: ${getRebirthIncomeMultiplier(playerData.saveData.rebirthCount)}x`);
+	RebirthCountUpdate.FireClient(player, playerData.saveData.rebirthCount);
+
+	print(`[Rebirth] ${player.Name} performed rebirth #${playerData.saveData.rebirthCount}. New income multiplier: ${getRebirthIncomeMultiplier(playerData.saveData.rebirthCount)}x`);
+
+	// Save immediately after rebirth
+	savePlayer(player);
 }
 
 /**
@@ -364,5 +407,10 @@ startIncomeLoop();
 
 // Start auto-save loop
 startAutoSaveLoop();
+
+// Handle rebirth requests
+RebirthRequest.OnServerEvent.Connect((player) => {
+	handleRebirth(player);
+});
 
 print("[CurrencyManager] Service initialized");

@@ -13,5 +13,20 @@ const CurrencyUpdate = new Instance("RemoteEvent");
 CurrencyUpdate.Name = "CurrencyUpdate";
 CurrencyUpdate.Parent = remoteFolder;
 
-export { CurrencyUpdate };
+// Rebirth request event (client -> server)
+const RebirthRequest = new Instance("RemoteEvent");
+RebirthRequest.Name = "RebirthRequest";
+RebirthRequest.Parent = remoteFolder;
+
+// Rebirth response event (server -> client)
+const RebirthResponse = new Instance("RemoteEvent");
+RebirthResponse.Name = "RebirthResponse";
+RebirthResponse.Parent = remoteFolder;
+
+// Rebirth count update event (server -> client)
+const RebirthCountUpdate = new Instance("RemoteEvent");
+RebirthCountUpdate.Name = "RebirthCountUpdate";
+RebirthCountUpdate.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate };
 
