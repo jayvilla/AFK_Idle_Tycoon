@@ -56,6 +56,12 @@ const ZoneUnlockRequest = remoteEventsFolder.WaitForChild(
 const ZoneUnlockResponse = remoteEventsFolder.WaitForChild(
   "ZoneUnlockResponse"
 ) as RemoteEvent;
+const ZoneSelectRequest = remoteEventsFolder.WaitForChild(
+  "ZoneSelectRequest"
+) as RemoteEvent;
+const ZoneSelectResponse = remoteEventsFolder.WaitForChild(
+  "ZoneSelectResponse"
+) as RemoteEvent;
 const PlayerDataUpdate = remoteEventsFolder.WaitForChild(
   "PlayerDataUpdate"
 ) as RemoteEvent;
@@ -438,6 +444,7 @@ function updateRetentionUI() {
 // Track player data
 let upgradeLevels: { [id: string]: number } = {};
 let unlockedZones: string[] = ["zone_1"];
+let selectedZone: string = "zone_1";
 let hasVIP = false;
 let hasDoubleCash = false;
 let hasAutoCollect = false;
@@ -448,6 +455,7 @@ PlayerDataUpdate.OnClientEvent.Connect(
   (data: {
     upgradeLevels: { [id: string]: number };
     unlockedZones: string[];
+    selectedZone?: string;
     hasVIP: boolean;
     hasDoubleCash: boolean;
     hasAutoCollect: boolean;
@@ -455,6 +463,9 @@ PlayerDataUpdate.OnClientEvent.Connect(
   }) => {
     upgradeLevels = data.upgradeLevels;
     unlockedZones = data.unlockedZones;
+    if (data.selectedZone !== undefined) {
+      selectedZone = data.selectedZone;
+    }
     hasVIP = data.hasVIP;
     hasDoubleCash = data.hasDoubleCash;
     hasAutoCollect = data.hasAutoCollect;
@@ -675,7 +686,14 @@ function updateZoneUI(): void {
       btnCorner.Parent = button;
 
       button.MouseButton1Click.Connect(() => {
-        ZoneUnlockRequest.FireServer(zone.id);
+        const isUnlocked = unlockedZones.includes(zone.id);
+        if (isUnlocked) {
+          // If unlocked, select it
+          ZoneSelectRequest.FireServer(zone.id);
+        } else {
+          // If not unlocked, unlock it
+          ZoneUnlockRequest.FireServer(zone.id);
+        }
       });
 
       zoneButtons[zone.id] = button;
@@ -683,18 +701,26 @@ function updateZoneUI(): void {
 
     const button = zoneButtons[zone.id];
     const isUnlocked = unlockedZones.includes(zone.id);
+    const isSelected = selectedZone === zone.id;
     const canUnlock =
       !isUnlocked &&
       (zone.unlockCost === 0 || currentCurrency >= zone.unlockCost);
     const vipOk = !zone.isVIP || hasVIP;
 
-    if (isUnlocked) {
+    if (isSelected && isUnlocked) {
+      // Selected zone - highlight with blue
+      button.BackgroundColor3 = new Color3(0.2, 0.4, 0.8);
+      button.Text = `▶ ${zone.name}`;
+    } else if (isUnlocked) {
+      // Unlocked but not selected - green
       button.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
       button.Text = `✓ ${zone.name}`;
     } else if (canUnlock && vipOk) {
+      // Can unlock - blue
       button.BackgroundColor3 = new Color3(0.4, 0.4, 0.6);
       button.Text = `${zone.name} ($${formatNumber(zone.unlockCost)})`;
     } else {
+      // Locked - gray
       button.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
       if (zone.isVIP && !hasVIP) {
         button.Text = `${zone.name} (VIP Only)`;
@@ -1107,6 +1133,7 @@ PlayerDataUpdate.OnClientEvent.Connect(
   (data: {
     upgradeLevels: { [id: string]: number };
     unlockedZones: string[];
+    selectedZone?: string;
     hasVIP: boolean;
     hasDoubleCash: boolean;
     hasAutoCollect: boolean;
@@ -1118,6 +1145,9 @@ PlayerDataUpdate.OnClientEvent.Connect(
   }) => {
     upgradeLevels = data.upgradeLevels;
     unlockedZones = data.unlockedZones;
+    if (data.selectedZone !== undefined) {
+      selectedZone = data.selectedZone;
+    }
     hasVIP = data.hasVIP;
     hasDoubleCash = data.hasDoubleCash;
     hasAutoCollect = data.hasAutoCollect;

@@ -48,6 +48,16 @@ const ZoneUnlockResponse = new Instance("RemoteEvent");
 ZoneUnlockResponse.Name = "ZoneUnlockResponse";
 ZoneUnlockResponse.Parent = remoteFolder;
 
+// Zone select request (client -> server) - select which zone to be active in
+const ZoneSelectRequest = new Instance("RemoteEvent");
+ZoneSelectRequest.Name = "ZoneSelectRequest";
+ZoneSelectRequest.Parent = remoteFolder;
+
+// Zone select response (server -> client)
+const ZoneSelectResponse = new Instance("RemoteEvent");
+ZoneSelectResponse.Name = "ZoneSelectResponse";
+ZoneSelectResponse.Parent = remoteFolder;
+
 // Player data update (server -> client) - sends all upgrade/zone data
 const PlayerDataUpdate = new Instance("RemoteEvent");
 PlayerDataUpdate.Name = "PlayerDataUpdate";
@@ -129,5 +139,5 @@ const FriendsResponse = new Instance("RemoteEvent");
 FriendsResponse.Name = "FriendsResponse";
 FriendsResponse.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse };
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, ZoneSelectRequest, ZoneSelectResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse };
 

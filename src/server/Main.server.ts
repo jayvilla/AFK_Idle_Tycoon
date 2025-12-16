@@ -1,5 +1,5 @@
 import { Players, DataStoreService, MarketplaceService } from "@rbxts/services";
-import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse } from "../shared/RemoteEvents";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, ZoneSelectRequest, ZoneSelectResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
 import { GAMEPASS_IDS, PRODUCT_IDS, BOOST_DURATION_1HOUR, BOOST_MULTIPLIER_2X, BOOST_MULTIPLIER_5X } from "../shared/MonetizationConfig";
@@ -101,6 +101,7 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 			rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
 			upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
 			unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+			selectedZone: typedData.selectedZone ?? DEFAULT_PLAYER_DATA.selectedZone,
 			hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
 			hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
 			hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
@@ -126,6 +127,7 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
 		upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
 		unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+		selectedZone: typedData.selectedZone ?? DEFAULT_PLAYER_DATA.selectedZone,
 		hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
 		hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
 		hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
@@ -256,24 +258,28 @@ function getActiveBoostMultiplier(playerData: PlayerData): number {
 }
 
 /**
- * Get current zone income multiplier
+ * Get current zone income multiplier (uses selected zone)
  */
 function getCurrentZoneMultiplier(playerData: PlayerData): number {
-	// Get the highest unlocked zone multiplier
-	let maxMultiplier = 1.0;
+	// Use the selected zone's multiplier
+	const selectedZoneId = playerData.saveData.selectedZone || "zone_1";
+	const zone = getZone(selectedZoneId);
 	
-	for (const zoneId of playerData.saveData.unlockedZones) {
-		const zone = getZone(zoneId);
-		if (zone) {
-			// Check VIP requirement
-			if (zone.isVIP && !playerData.saveData.hasVIP) {
-				continue; // Skip VIP zones if player doesn't have VIP
-			}
-			maxMultiplier = math.max(maxMultiplier, zone.incomeMultiplier);
-		}
+	if (!zone) {
+		return 1.0; // Default if zone not found
 	}
 	
-	return maxMultiplier;
+	// Check if zone is unlocked
+	if (!playerData.saveData.unlockedZones.includes(selectedZoneId)) {
+		return 1.0; // Default if zone not unlocked
+	}
+	
+	// Check VIP requirement
+	if (zone.isVIP && !playerData.saveData.hasVIP) {
+		return 1.0; // Default if VIP required but not owned
+	}
+	
+	return zone.incomeMultiplier;
 }
 
 /**
@@ -288,6 +294,7 @@ function sendPlayerDataUpdate(player: Player): void {
 	PlayerDataUpdate.FireClient(player, {
 		upgradeLevels: playerData.saveData.upgradeLevels,
 		unlockedZones: playerData.saveData.unlockedZones,
+		selectedZone: playerData.saveData.selectedZone,
 		hasVIP: playerData.saveData.hasVIP,
 		hasDoubleCash: playerData.saveData.hasDoubleCash,
 		hasAutoCollect: playerData.saveData.hasAutoCollect,
@@ -414,6 +421,9 @@ async function initializePlayer(player: Player): Promise<void> {
 		// Check achievements on join
 		checkAchievements(player);
 		
+		// Set environment based on selected zone
+		changePlayerEnvironment(player, saveData.selectedZone || "zone_1");
+		
 		if (offlineEarnings > 0) {
 			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline), ${saveData.rebirthCount} rebirths`);
 		} else {
@@ -431,8 +441,9 @@ async function initializePlayer(player: Player): Promise<void> {
 				lastSaveTime: 0,
 				rebirthCount: 0,
 				upgradeLevels: {},
-				unlockedZones: ["zone_1"],
-				hasVIP: false,
+			unlockedZones: ["zone_1"],
+			selectedZone: "zone_1",
+			hasVIP: false,
 				hasDoubleCash: false,
 				hasAutoCollect: false,
 				activeBoosts: {},
@@ -700,6 +711,10 @@ function handleZoneUnlock(player: Player, zoneId: string): void {
 
 	ZoneUnlockResponse.FireClient(player, true, `${zone.name} unlocked!`);
 	
+	// Auto-select newly unlocked zone
+	playerData.saveData.selectedZone = zoneId;
+	changePlayerEnvironment(player, zoneId);
+	
 	// Check achievements
 	checkAchievements(player);
 	
@@ -826,6 +841,151 @@ ZoneUnlockRequest.OnServerEvent.Connect((player, ...args) => {
 		handleZoneUnlock(player, zoneId);
 	}
 });
+
+/**
+ * Handle zone selection request
+ */
+function handleZoneSelect(player: Player, zoneId: string): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Zone] Player ${player.Name} has no data`);
+		ZoneSelectResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+
+	const zone = getZone(zoneId);
+	if (!zone) {
+		warn(`[Zone] Invalid zone ID: ${zoneId}`);
+		ZoneSelectResponse.FireClient(player, false, "Invalid zone");
+		return;
+	}
+
+	// Check if zone is unlocked
+	if (!playerData.saveData.unlockedZones.includes(zoneId)) {
+		ZoneSelectResponse.FireClient(player, false, "Zone not unlocked");
+		return;
+	}
+
+	// Check VIP requirement
+	if (zone.isVIP && !playerData.saveData.hasVIP) {
+		ZoneSelectResponse.FireClient(player, false, "VIP zone requires VIP gamepass");
+		return;
+	}
+
+	// Select zone
+	playerData.saveData.selectedZone = zoneId;
+	
+	// Change environment
+	changePlayerEnvironment(player, zoneId);
+	
+	// Update client
+	sendPlayerDataUpdate(player);
+	
+	ZoneSelectResponse.FireClient(player, true, `Switched to ${zone.name}!`);
+	print(`[Zone] ${player.Name} selected ${zone.name}`);
+}
+
+// Handle zone selection requests
+ZoneSelectRequest.OnServerEvent.Connect((player, ...args) => {
+	const zoneId = args[0] as string;
+	if (typeIs(zoneId, "string")) {
+		handleZoneSelect(player, zoneId);
+	}
+});
+
+/**
+ * Change player's environment based on selected zone
+ */
+function changePlayerEnvironment(player: Player, zoneId: string): void {
+	const Workspace = game.GetService("Workspace");
+	const Lighting = game.GetService("Lighting");
+	
+	// Get zone config
+	const zone = getZone(zoneId);
+	if (!zone) {
+		return;
+	}
+
+	// Environment settings for each zone
+	const zoneEnvironments: { [zoneId: string]: {
+		terrainColor?: Color3;
+		ambient?: Color3;
+		brightness?: number;
+		fogColor?: Color3;
+		fogStart?: number;
+		timeOfDay?: string;
+		skyboxId?: string;
+	}} = {
+		zone_1: {
+			// Starter Zone - Default/Plains
+			terrainColor: new Color3(0.4, 0.6, 0.3), // Green grass
+			ambient: new Color3(0.5, 0.5, 0.5),
+			brightness: 2,
+			fogColor: new Color3(0.75, 0.85, 1),
+			fogStart: 0,
+			timeOfDay: "14:00:00", // Afternoon
+		},
+		zone_2: {
+			// Forest Zone - Green, darker
+			terrainColor: new Color3(0.2, 0.4, 0.1), // Dark green
+			ambient: new Color3(0.3, 0.4, 0.3),
+			brightness: 1.5,
+			fogColor: new Color3(0.4, 0.5, 0.3),
+			fogStart: 50,
+			timeOfDay: "12:00:00", // Noon
+		},
+		zone_3: {
+			// Mountain Zone - Rocky, bright
+			terrainColor: new Color3(0.5, 0.5, 0.5), // Gray rock
+			ambient: new Color3(0.6, 0.6, 0.6),
+			brightness: 3,
+			fogColor: new Color3(0.9, 0.9, 1),
+			fogStart: 100,
+			timeOfDay: "10:00:00", // Morning
+		},
+		zone_vip: {
+			// VIP Zone - Luxurious, golden
+			terrainColor: new Color3(0.6, 0.5, 0.3), // Gold/brown
+			ambient: new Color3(0.7, 0.6, 0.4),
+			brightness: 2.5,
+			fogColor: new Color3(1, 0.9, 0.7),
+			fogStart: 0,
+			timeOfDay: "16:00:00", // Golden hour
+		},
+	};
+
+	const env = zoneEnvironments[zoneId];
+	if (!env) {
+		return; // Use default if zone not found
+	}
+
+	// Change terrain color (if terrain exists)
+	if (Workspace.Terrain) {
+		if (env.terrainColor) {
+			Workspace.Terrain.WaterColor = env.terrainColor;
+			// Note: Terrain material colors are more complex, this is a basic approach
+		}
+	}
+
+	// Change lighting
+	if (env.ambient) {
+		Lighting.Ambient = env.ambient;
+	}
+	if (env.brightness !== undefined) {
+		Lighting.Brightness = env.brightness;
+	}
+	if (env.fogColor) {
+		Lighting.FogColor = env.fogColor;
+	}
+	if (env.fogStart !== undefined) {
+		Lighting.FogStart = env.fogStart;
+	}
+	if (env.timeOfDay) {
+		Lighting.TimeOfDay = env.timeOfDay;
+	}
+
+	print(`[Environment] Changed ${player.Name}'s environment to ${zone.name}`);
+}
 
 // Handle AFK reward claim requests
 AFKRewardClaimRequest.OnServerEvent.Connect((player) => {

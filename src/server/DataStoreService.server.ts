@@ -90,6 +90,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
           typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
         unlockedZones:
           typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+        selectedZone:
+          typedData.selectedZone ?? DEFAULT_PLAYER_DATA.selectedZone,
         hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
         hasDoubleCash:
           typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
@@ -129,6 +131,7 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
         typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
       unlockedZones:
         typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+      selectedZone: typedData.selectedZone ?? DEFAULT_PLAYER_DATA.selectedZone,
       hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
       hasDoubleCash:
         typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,

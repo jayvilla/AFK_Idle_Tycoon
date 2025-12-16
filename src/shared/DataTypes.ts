@@ -8,6 +8,7 @@ export interface PlayerSaveData {
 	rebirthCount: number; // For Phase 3
 	upgradeLevels: { [upgradeId: string]: number }; // Upgrade ID -> Level
 	unlockedZones: string[]; // Array of unlocked zone IDs
+	selectedZone: string; // Currently selected/active zone ID
 	hasVIP: boolean; // VIP gamepass status (Phase 5)
 	hasDoubleCash: boolean; // 2× Cash gamepass status
 	hasAutoCollect: boolean; // Auto-collect gamepass status
@@ -44,6 +45,7 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	rebirthCount: 0,
 	upgradeLevels: {},
 	unlockedZones: ["zone_1"], // Start with zone_1 unlocked
+	selectedZone: "zone_1", // Start with zone_1 selected
 	hasVIP: false,
 	hasDoubleCash: false,
 	hasAutoCollect: false,
