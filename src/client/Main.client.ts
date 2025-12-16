@@ -1,4 +1,9 @@
-import { Players, ReplicatedStorage } from "@rbxts/services";
+import {
+  Players,
+  ReplicatedStorage,
+  MarketplaceService,
+} from "@rbxts/services";
+import { GAMEPASS_IDS, PRODUCT_IDS } from "../shared/MonetizationConfig";
 
 // Get the local player
 const player = Players.LocalPlayer;
@@ -188,6 +193,9 @@ function getRebirthCost(count: number): number {
 let upgradeLevels: { [id: string]: number } = {};
 let unlockedZones: string[] = ["zone_1"];
 let hasVIP = false;
+let hasDoubleCash = false;
+let hasAutoCollect = false;
+let activeBoosts: { [productId: number]: number } = {};
 
 // Listen for player data updates
 PlayerDataUpdate.OnClientEvent.Connect(
@@ -195,12 +203,19 @@ PlayerDataUpdate.OnClientEvent.Connect(
     upgradeLevels: { [id: string]: number };
     unlockedZones: string[];
     hasVIP: boolean;
+    hasDoubleCash: boolean;
+    hasAutoCollect: boolean;
+    activeBoosts: { [productId: number]: number };
   }) => {
     upgradeLevels = data.upgradeLevels;
     unlockedZones = data.unlockedZones;
     hasVIP = data.hasVIP;
+    hasDoubleCash = data.hasDoubleCash;
+    hasAutoCollect = data.hasAutoCollect;
+    activeBoosts = data.activeBoosts;
     updateUpgradeUI();
     updateZoneUI();
+    updateGamepassUI();
   }
 );
 
@@ -470,6 +485,333 @@ CurrencyUpdate.OnClientEvent.Connect((newCurrency: number) => {
   updateUpgradeUI();
   updateZoneUI();
 });
+
+// Gamepass UI
+const gamepassFrame = new Instance("Frame");
+gamepassFrame.Name = "GamepassFrame";
+gamepassFrame.Size = new UDim2(0, 200, 0, 200);
+gamepassFrame.Position = new UDim2(0, 20, 0, 200);
+gamepassFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+gamepassFrame.BorderSizePixel = 0;
+gamepassFrame.Parent = screenGui;
+
+const gamepassCorner = new Instance("UICorner");
+gamepassCorner.CornerRadius = new UDim(0, 8);
+gamepassCorner.Parent = gamepassFrame;
+
+const gamepassTitle = new Instance("TextLabel");
+gamepassTitle.Name = "Title";
+gamepassTitle.Size = new UDim2(1, 0, 0, 30);
+gamepassTitle.BackgroundTransparency = 1;
+gamepassTitle.Text = "Gamepasses";
+gamepassTitle.TextColor3 = new Color3(1, 1, 1);
+gamepassTitle.TextSize = 18;
+gamepassTitle.Font = Enum.Font.GothamBold;
+gamepassTitle.Parent = gamepassFrame;
+
+const gamepassList = new Instance("Frame");
+gamepassList.Name = "GamepassList";
+gamepassList.Size = new UDim2(1, -10, 1, -35);
+gamepassList.Position = new UDim2(0, 5, 0, 35);
+gamepassList.BackgroundTransparency = 1;
+gamepassList.Parent = gamepassFrame;
+
+const gamepassLayout = new Instance("UIListLayout");
+gamepassLayout.Padding = new UDim(0, 5);
+gamepassLayout.SortOrder = Enum.SortOrder.LayoutOrder;
+gamepassLayout.Parent = gamepassList;
+
+// Gamepass buttons
+const doubleCashButton = new Instance("TextButton");
+doubleCashButton.Name = "DoubleCash";
+doubleCashButton.Size = new UDim2(1, 0, 0, 40);
+doubleCashButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+doubleCashButton.BorderSizePixel = 0;
+doubleCashButton.Text = "2× Cash";
+doubleCashButton.TextColor3 = new Color3(1, 1, 1);
+doubleCashButton.TextSize = 14;
+doubleCashButton.Font = Enum.Font.Gotham;
+doubleCashButton.Parent = gamepassList;
+
+const autoCollectButton = new Instance("TextButton");
+autoCollectButton.Name = "AutoCollect";
+autoCollectButton.Size = new UDim2(1, 0, 0, 40);
+autoCollectButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+autoCollectButton.BorderSizePixel = 0;
+autoCollectButton.Text = "Auto Collect";
+autoCollectButton.TextColor3 = new Color3(1, 1, 1);
+autoCollectButton.TextSize = 14;
+autoCollectButton.Font = Enum.Font.Gotham;
+autoCollectButton.Parent = gamepassList;
+
+const vipButton = new Instance("TextButton");
+vipButton.Name = "VIP";
+vipButton.Size = new UDim2(1, 0, 0, 40);
+vipButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+vipButton.BorderSizePixel = 0;
+vipButton.Text = "VIP Zone";
+vipButton.TextColor3 = new Color3(1, 1, 1);
+vipButton.TextSize = 14;
+vipButton.Font = Enum.Font.Gotham;
+vipButton.Parent = gamepassList;
+
+// Add corners to buttons
+[doubleCashButton, autoCollectButton, vipButton].forEach((btn) => {
+  const corner = new Instance("UICorner");
+  corner.CornerRadius = new UDim(0, 6);
+  corner.Parent = btn;
+});
+
+// Gamepass purchase handlers
+doubleCashButton.MouseButton1Click.Connect(() => {
+  if (GAMEPASS_IDS.DOUBLE_CASH > 0) {
+    MarketplaceService.PromptGamePassPurchase(player, GAMEPASS_IDS.DOUBLE_CASH);
+  } else {
+    warn("[Client] 2× Cash gamepass ID not set in MonetizationConfig");
+  }
+});
+
+autoCollectButton.MouseButton1Click.Connect(() => {
+  if (GAMEPASS_IDS.AUTO_COLLECT > 0) {
+    MarketplaceService.PromptGamePassPurchase(
+      player,
+      GAMEPASS_IDS.AUTO_COLLECT
+    );
+  } else {
+    warn("[Client] Auto-Collect gamepass ID not set in MonetizationConfig");
+  }
+});
+
+vipButton.MouseButton1Click.Connect(() => {
+  if (GAMEPASS_IDS.VIP_ZONE > 0) {
+    MarketplaceService.PromptGamePassPurchase(player, GAMEPASS_IDS.VIP_ZONE);
+  } else {
+    warn("[Client] VIP Zone gamepass ID not set in MonetizationConfig");
+  }
+});
+
+function updateGamepassUI(): void {
+  // Update button states based on ownership
+  if (hasDoubleCash) {
+    doubleCashButton.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
+    doubleCashButton.Text = "✓ 2× Cash";
+  } else {
+    doubleCashButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+    doubleCashButton.Text = "2× Cash";
+  }
+
+  if (hasAutoCollect) {
+    autoCollectButton.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
+    autoCollectButton.Text = "✓ Auto Collect";
+  } else {
+    autoCollectButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+    autoCollectButton.Text = "Auto Collect";
+  }
+
+  if (hasVIP) {
+    vipButton.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
+    vipButton.Text = "✓ VIP Zone";
+  } else {
+    vipButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+    vipButton.Text = "VIP Zone";
+  }
+
+  // Boost display is handled separately
+}
+
+// Developer Products UI
+const productsFrame = new Instance("Frame");
+productsFrame.Name = "ProductsFrame";
+productsFrame.Size = new UDim2(0, 200, 0, 150);
+productsFrame.Position = new UDim2(0, 20, 0, 410);
+productsFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+productsFrame.BorderSizePixel = 0;
+productsFrame.Parent = screenGui;
+
+const productsCorner = new Instance("UICorner");
+productsCorner.CornerRadius = new UDim(0, 8);
+productsCorner.Parent = productsFrame;
+
+const productsTitle = new Instance("TextLabel");
+productsTitle.Name = "Title";
+productsTitle.Size = new UDim2(1, 0, 0, 25);
+productsTitle.BackgroundTransparency = 1;
+productsTitle.Text = "Products";
+productsTitle.TextColor3 = new Color3(1, 1, 1);
+productsTitle.TextSize = 16;
+productsTitle.Font = Enum.Font.GothamBold;
+productsTitle.Parent = productsFrame;
+
+const productsList = new Instance("Frame");
+productsList.Name = "ProductsList";
+productsList.Size = new UDim2(1, -10, 1, -30);
+productsList.Position = new UDim2(0, 5, 0, 28);
+productsList.BackgroundTransparency = 1;
+productsList.Parent = productsFrame;
+
+const productsLayout = new Instance("UIListLayout");
+productsLayout.Padding = new UDim(0, 5);
+productsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
+productsLayout.Parent = productsList;
+
+// Product buttons
+const boost2xButton = new Instance("TextButton");
+boost2xButton.Name = "Boost2X";
+boost2xButton.Size = new UDim2(1, 0, 0, 35);
+boost2xButton.BackgroundColor3 = new Color3(0.3, 0.5, 0.3);
+boost2xButton.BorderSizePixel = 0;
+boost2xButton.Text = "2× Boost (1h)";
+boost2xButton.TextColor3 = new Color3(1, 1, 1);
+boost2xButton.TextSize = 13;
+boost2xButton.Font = Enum.Font.Gotham;
+boost2xButton.Parent = productsList;
+
+const boost5xButton = new Instance("TextButton");
+boost5xButton.Name = "Boost5X";
+boost5xButton.Size = new UDim2(1, 0, 0, 35);
+boost5xButton.BackgroundColor3 = new Color3(0.5, 0.3, 0.3);
+boost5xButton.BorderSizePixel = 0;
+boost5xButton.Text = "5× Boost (1h)";
+boost5xButton.TextColor3 = new Color3(1, 1, 1);
+boost5xButton.TextSize = 13;
+boost5xButton.Font = Enum.Font.Gotham;
+boost5xButton.Parent = productsList;
+
+const rebirthSkipButton = new Instance("TextButton");
+rebirthSkipButton.Name = "RebirthSkip";
+rebirthSkipButton.Size = new UDim2(1, 0, 0, 35);
+rebirthSkipButton.BackgroundColor3 = new Color3(0.4, 0.3, 0.5);
+rebirthSkipButton.BorderSizePixel = 0;
+rebirthSkipButton.Text = "Rebirth Skip";
+rebirthSkipButton.TextColor3 = new Color3(1, 1, 1);
+rebirthSkipButton.TextSize = 13;
+rebirthSkipButton.Font = Enum.Font.Gotham;
+rebirthSkipButton.Parent = productsList;
+
+// Add corners to product buttons
+[boost2xButton, boost5xButton, rebirthSkipButton].forEach((btn) => {
+  const corner = new Instance("UICorner");
+  corner.CornerRadius = new UDim(0, 6);
+  corner.Parent = btn;
+});
+
+// Product purchase handlers
+boost2xButton.MouseButton1Click.Connect(() => {
+  if (PRODUCT_IDS.BOOST_2X_1HOUR > 0) {
+    MarketplaceService.PromptProductPurchase(
+      player,
+      PRODUCT_IDS.BOOST_2X_1HOUR
+    );
+  } else {
+    warn("[Client] 2× Boost product ID not set in MonetizationConfig");
+  }
+});
+
+boost5xButton.MouseButton1Click.Connect(() => {
+  if (PRODUCT_IDS.BOOST_5X_1HOUR > 0) {
+    MarketplaceService.PromptProductPurchase(
+      player,
+      PRODUCT_IDS.BOOST_5X_1HOUR
+    );
+  } else {
+    warn("[Client] 5× Boost product ID not set in MonetizationConfig");
+  }
+});
+
+rebirthSkipButton.MouseButton1Click.Connect(() => {
+  if (PRODUCT_IDS.REBIRTH_SKIP > 0) {
+    MarketplaceService.PromptProductPurchase(player, PRODUCT_IDS.REBIRTH_SKIP);
+  } else {
+    warn("[Client] Rebirth Skip product ID not set in MonetizationConfig");
+  }
+});
+
+// Boost display
+const boostDisplayFrame = new Instance("Frame");
+boostDisplayFrame.Name = "BoostDisplay";
+boostDisplayFrame.Size = new UDim2(0, 200, 0, 80);
+boostDisplayFrame.Position = new UDim2(0, 20, 0, 570);
+boostDisplayFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+boostDisplayFrame.BorderSizePixel = 0;
+boostDisplayFrame.Parent = screenGui;
+
+const boostDisplayCorner = new Instance("UICorner");
+boostDisplayCorner.CornerRadius = new UDim(0, 8);
+boostDisplayCorner.Parent = boostDisplayFrame;
+
+const boostDisplayTitle = new Instance("TextLabel");
+boostDisplayTitle.Name = "Title";
+boostDisplayTitle.Size = new UDim2(1, 0, 0, 25);
+boostDisplayTitle.BackgroundTransparency = 1;
+boostDisplayTitle.Text = "Active Boosts";
+boostDisplayTitle.TextColor3 = new Color3(1, 1, 1);
+boostDisplayTitle.TextSize = 16;
+boostDisplayTitle.Font = Enum.Font.GothamBold;
+boostDisplayTitle.Parent = boostDisplayFrame;
+
+const boostDisplayLabel = new Instance("TextLabel");
+boostDisplayLabel.Name = "BoostText";
+boostDisplayLabel.Size = new UDim2(1, -10, 1, -30);
+boostDisplayLabel.Position = new UDim2(0, 5, 0, 28);
+boostDisplayLabel.BackgroundTransparency = 1;
+boostDisplayLabel.Text = "No active boosts";
+boostDisplayLabel.TextColor3 = new Color3(0.7, 0.7, 0.7);
+boostDisplayLabel.TextSize = 14;
+boostDisplayLabel.Font = Enum.Font.Gotham;
+boostDisplayLabel.TextXAlignment = Enum.TextXAlignment.Left;
+boostDisplayLabel.TextWrapped = true;
+boostDisplayLabel.Parent = boostDisplayFrame;
+
+function updateBoostDisplay(): void {
+  const currentTime = os.time();
+  const activeBoostsList: string[] = [];
+
+  for (const [productId, expiration] of pairs(activeBoosts)) {
+    if (
+      typeIs(productId, "number") &&
+      typeIs(expiration, "number") &&
+      expiration > currentTime
+    ) {
+      const timeLeft = math.floor((expiration - currentTime) / 60); // minutes
+      if (productId === PRODUCT_IDS.BOOST_2X_1HOUR) {
+        activeBoostsList.push(`2× Boost: ${timeLeft}m`);
+      } else if (productId === PRODUCT_IDS.BOOST_5X_1HOUR) {
+        activeBoostsList.push(`5× Boost: ${timeLeft}m`);
+      }
+    }
+  }
+
+  if (activeBoostsList.size() > 0) {
+    boostDisplayLabel.Text = activeBoostsList.join("\n");
+    boostDisplayLabel.TextColor3 = new Color3(0.8, 1, 0.8);
+  } else {
+    boostDisplayLabel.Text = "No active boosts";
+    boostDisplayLabel.TextColor3 = new Color3(0.7, 0.7, 0.7);
+  }
+}
+
+// Update boost display when data changes
+PlayerDataUpdate.OnClientEvent.Connect(
+  (data: {
+    upgradeLevels: { [id: string]: number };
+    unlockedZones: string[];
+    hasVIP: boolean;
+    hasDoubleCash: boolean;
+    hasAutoCollect: boolean;
+    activeBoosts: { [productId: number]: number };
+  }) => {
+    upgradeLevels = data.upgradeLevels;
+    unlockedZones = data.unlockedZones;
+    hasVIP = data.hasVIP;
+    hasDoubleCash = data.hasDoubleCash;
+    hasAutoCollect = data.hasAutoCollect;
+    activeBoosts = data.activeBoosts;
+    updateUpgradeUI();
+    updateZoneUI();
+    updateGamepassUI();
+    updateBoostDisplay();
+  }
+);
 
 print("[Client] Currency UI initialized");
 

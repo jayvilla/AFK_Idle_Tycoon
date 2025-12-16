@@ -9,6 +9,9 @@ export interface PlayerSaveData {
 	upgradeLevels: { [upgradeId: string]: number }; // Upgrade ID -> Level
 	unlockedZones: string[]; // Array of unlocked zone IDs
 	hasVIP: boolean; // VIP gamepass status (Phase 5)
+	hasDoubleCash: boolean; // 2× Cash gamepass status
+	hasAutoCollect: boolean; // Auto-collect gamepass status
+	activeBoosts: { [productId: number]: number }; // Product ID -> expiration timestamp
 }
 
 /**
@@ -22,6 +25,9 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	upgradeLevels: {},
 	unlockedZones: ["zone_1"], // Start with zone_1 unlocked
 	hasVIP: false,
+	hasDoubleCash: false,
+	hasAutoCollect: false,
+	activeBoosts: {},
 };
 
 /**

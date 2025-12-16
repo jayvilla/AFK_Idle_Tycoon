@@ -91,10 +91,34 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
         unlockedZones:
           typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
         hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+        hasDoubleCash:
+          typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
+        hasAutoCollect:
+          typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
+        activeBoosts:
+          typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
       };
     }
 
-    return typedData as PlayerSaveData;
+    // Ensure all fields exist even if version is current
+    const migrated: PlayerSaveData = {
+      version: currentVersion,
+      currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
+      lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
+      rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+      upgradeLevels:
+        typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
+      unlockedZones:
+        typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+      hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+      hasDoubleCash:
+        typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
+      hasAutoCollect:
+        typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
+      activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+    };
+
+    return migrated;
   }
 
   // Invalid data, return defaults

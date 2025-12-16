@@ -1,7 +1,8 @@
-import { Players, DataStoreService } from "@rbxts/services";
+import { Players, DataStoreService, MarketplaceService } from "@rbxts/services";
 import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
+import { GAMEPASS_IDS, PRODUCT_IDS, BOOST_DURATION_1HOUR, BOOST_MULTIPLIER_2X, BOOST_MULTIPLIER_5X } from "../shared/MonetizationConfig";
 
 print("AFK Tycoon TypeScript server running");
 
@@ -90,22 +91,28 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 				currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
 				lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
 				rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
-				upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
-				unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
-				hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
-			};
-		}
-		
-		// Ensure all fields exist even if version is current
-		const migrated: PlayerSaveData = {
-			version: currentVersion,
-			currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
-			lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
-			rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
 			upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
 			unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
 			hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+			hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
+			hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
+			activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
 		};
+	}
+	
+	// Ensure all fields exist even if version is current
+	const migrated: PlayerSaveData = {
+		version: currentVersion,
+		currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
+		lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
+		rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+		upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
+		unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+		hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+		hasDoubleCash: typedData.hasDoubleCash ?? DEFAULT_PLAYER_DATA.hasDoubleCash,
+		hasAutoCollect: typedData.hasAutoCollect ?? DEFAULT_PLAYER_DATA.hasAutoCollect,
+		activeBoosts: typedData.activeBoosts ?? DEFAULT_PLAYER_DATA.activeBoosts,
+	};
 		
 		return migrated;
 	}
@@ -194,6 +201,33 @@ function getTotalUpgradeMultiplier(playerData: PlayerData): number {
 }
 
 /**
+ * Get active boost multiplier from products
+ */
+function getActiveBoostMultiplier(playerData: PlayerData): number {
+	const currentTime = os.time();
+	let maxBoost = 1;
+	
+	// Clean expired boosts
+	for (const [productId, expiration] of pairs(playerData.saveData.activeBoosts)) {
+		if (typeIs(productId, "number") && typeIs(expiration, "number")) {
+			if (expiration < currentTime) {
+				// Boost expired, remove it
+				delete playerData.saveData.activeBoosts[productId];
+			} else {
+				// Check which boost this is
+				if (productId === PRODUCT_IDS.BOOST_2X_1HOUR) {
+					maxBoost = math.max(maxBoost, BOOST_MULTIPLIER_2X);
+				} else if (productId === PRODUCT_IDS.BOOST_5X_1HOUR) {
+					maxBoost = math.max(maxBoost, BOOST_MULTIPLIER_5X);
+				}
+			}
+		}
+	}
+	
+	return maxBoost;
+}
+
+/**
  * Get current zone income multiplier
  */
 function getCurrentZoneMultiplier(playerData: PlayerData): number {
@@ -227,6 +261,9 @@ function sendPlayerDataUpdate(player: Player): void {
 		upgradeLevels: playerData.saveData.upgradeLevels,
 		unlockedZones: playerData.saveData.unlockedZones,
 		hasVIP: playerData.saveData.hasVIP,
+		hasDoubleCash: playerData.saveData.hasDoubleCash,
+		hasAutoCollect: playerData.saveData.hasAutoCollect,
+		activeBoosts: playerData.saveData.activeBoosts,
 	});
 }
 
@@ -279,6 +316,9 @@ async function initializePlayer(player: Player): Promise<void> {
 		
 		playerDataMap.set(player, playerData);
 		
+		// Check gamepass ownership
+		checkGamepassOwnership(player);
+		
 		// Send initial currency, rebirth count, and player data to client
 		CurrencyUpdate.FireClient(player, saveData.currency);
 		RebirthCountUpdate.FireClient(player, saveData.rebirthCount);
@@ -302,6 +342,9 @@ async function initializePlayer(player: Player): Promise<void> {
 				upgradeLevels: {},
 				unlockedZones: ["zone_1"],
 				hasVIP: false,
+				hasDoubleCash: false,
+				hasAutoCollect: false,
+				activeBoosts: {},
 			},
 			sessionStartTime: os.time(),
 			lastSaveTime: os.time(),
@@ -380,8 +423,15 @@ function processAFKIncome(): void {
 		const rebirthMultiplier = getRebirthIncomeMultiplier(playerData.saveData.rebirthCount);
 		const upgradeMultiplier = getTotalUpgradeMultiplier(playerData);
 		const zoneMultiplier = getCurrentZoneMultiplier(playerData);
+		const boostMultiplier = getActiveBoostMultiplier(playerData);
 		
-		const totalMultiplier = rebirthMultiplier * upgradeMultiplier * zoneMultiplier;
+		// Gamepass multipliers
+		let gamepassMultiplier = 1;
+		if (playerData.saveData.hasDoubleCash) {
+			gamepassMultiplier *= 2; // 2× Cash gamepass
+		}
+		
+		const totalMultiplier = rebirthMultiplier * upgradeMultiplier * zoneMultiplier * boostMultiplier * gamepassMultiplier;
 		const income = BASE_INCOME_PER_SECOND * totalMultiplier;
 
 		// Add currency
@@ -612,5 +662,159 @@ ZoneUnlockRequest.OnServerEvent.Connect((player, ...args) => {
 		handleZoneUnlock(player, zoneId);
 	}
 });
+
+/**
+ * Process gamepass purchase
+ */
+function processGamepassPurchase(player: Player, gamepassId: number): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Monetization] Player ${player.Name} has no data for gamepass purchase`);
+		return;
+	}
+
+	if (gamepassId === GAMEPASS_IDS.DOUBLE_CASH) {
+		playerData.saveData.hasDoubleCash = true;
+		print(`[Monetization] ${player.Name} purchased 2× Cash gamepass`);
+		sendPlayerDataUpdate(player);
+		savePlayer(player);
+	} else if (gamepassId === GAMEPASS_IDS.AUTO_COLLECT) {
+		playerData.saveData.hasAutoCollect = true;
+		print(`[Monetization] ${player.Name} purchased Auto-Collect gamepass`);
+		sendPlayerDataUpdate(player);
+		savePlayer(player);
+	} else if (gamepassId === GAMEPASS_IDS.VIP_ZONE) {
+		playerData.saveData.hasVIP = true;
+		// Auto-unlock VIP zone if not already unlocked
+		if (!playerData.saveData.unlockedZones.includes("zone_vip")) {
+			playerData.saveData.unlockedZones.push("zone_vip");
+		}
+		print(`[Monetization] ${player.Name} purchased VIP Zone gamepass`);
+		sendPlayerDataUpdate(player);
+		savePlayer(player);
+	} else {
+		warn(`[Monetization] Unknown gamepass ID: ${gamepassId}`);
+	}
+}
+
+/**
+ * Process developer product purchase
+ */
+function processProductPurchase(player: Player, productId: number): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Monetization] Player ${player.Name} has no data for product purchase`);
+		return;
+	}
+
+	if (productId === PRODUCT_IDS.BOOST_2X_1HOUR) {
+		const expiration = os.time() + BOOST_DURATION_1HOUR;
+		playerData.saveData.activeBoosts[productId] = expiration;
+		print(`[Monetization] ${player.Name} purchased 2× Boost (1 hour)`);
+		sendPlayerDataUpdate(player);
+		savePlayer(player);
+	} else if (productId === PRODUCT_IDS.BOOST_5X_1HOUR) {
+		const expiration = os.time() + BOOST_DURATION_1HOUR;
+		playerData.saveData.activeBoosts[productId] = expiration;
+		print(`[Monetization] ${player.Name} purchased 5× Boost (1 hour)`);
+		sendPlayerDataUpdate(player);
+		savePlayer(player);
+	} else if (productId === PRODUCT_IDS.REBIRTH_SKIP) {
+		// Skip current rebirth cost - give player enough currency for next rebirth
+		const currentRebirthCount = playerData.saveData.rebirthCount;
+		const nextRebirthCost = getRebirthCost(currentRebirthCount);
+		playerData.saveData.currency += nextRebirthCost;
+		CurrencyUpdate.FireClient(player, playerData.saveData.currency);
+		print(`[Monetization] ${player.Name} purchased Rebirth Skip, granted ${nextRebirthCost} currency`);
+		savePlayer(player);
+	} else {
+		warn(`[Monetization] Unknown product ID: ${productId}`);
+	}
+}
+
+/**
+ * Handle MarketplaceService purchase
+ */
+function handlePurchase(player: Player, receiptInfo: ReceiptInfo): Enum.ProductPurchaseDecision {
+	try {
+		// Process the purchase
+		if (receiptInfo.ProductId > 0) {
+			// Developer product
+			processProductPurchase(player, receiptInfo.ProductId);
+		} else {
+			// Gamepass (negative ID)
+			processGamepassPurchase(player, receiptInfo.ProductId);
+		}
+		
+		return Enum.ProductPurchaseDecision.PurchaseGranted;
+	} catch (error) {
+		warn(`[Monetization] Failed to process purchase for ${player.Name}: ${error}`);
+		return Enum.ProductPurchaseDecision.NotProcessedYet;
+	}
+}
+
+// Set up MarketplaceService purchase handler
+MarketplaceService.PromptGamePassPurchaseFinished.Connect((player: Player, gamePassId: number, wasPurchased: boolean) => {
+	// Gamepass purchases are handled automatically, but we need to check ownership
+	if (wasPurchased) {
+		checkGamepassOwnership(player);
+	}
+});
+
+MarketplaceService.PromptProductPurchaseFinished.Connect((userId: number, productId: number, isPurchased: boolean) => {
+	if (isPurchased) {
+		// Product was purchased, but we need to wait for ProcessReceipt callback
+		// The actual processing happens in handlePurchase
+		const player = Players.GetPlayerByUserId(userId);
+		if (player) {
+			print(`[Monetization] ${player.Name} purchased product ${productId}`);
+		}
+	}
+});
+
+// Process receipts (this is called by Roblox when a purchase is made)
+MarketplaceService.ProcessReceipt = (receiptInfo: ReceiptInfo): Enum.ProductPurchaseDecision => {
+	const player = Players.GetPlayerByUserId(receiptInfo.PlayerId);
+	if (!player) {
+		// Player not in game, grant purchase when they join
+		warn(`[Monetization] Player ${receiptInfo.PlayerId} not in game, purchase will be granted on join`);
+		return Enum.ProductPurchaseDecision.NotProcessedYet;
+	}
+	
+	return handlePurchase(player, receiptInfo);
+};
+
+// Check gamepass ownership on player join
+async function checkGamepassOwnership(player: Player): Promise<void> {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+
+	// Check each gamepass
+	const [hasDoubleCash] = pcall(() => MarketplaceService.UserOwnsGamePassAsync(player.UserId, GAMEPASS_IDS.DOUBLE_CASH));
+	const [hasAutoCollect] = pcall(() => MarketplaceService.UserOwnsGamePassAsync(player.UserId, GAMEPASS_IDS.AUTO_COLLECT));
+	const [hasVIP] = pcall(() => MarketplaceService.UserOwnsGamePassAsync(player.UserId, GAMEPASS_IDS.VIP_ZONE));
+
+	if (hasDoubleCash && !playerData.saveData.hasDoubleCash) {
+		playerData.saveData.hasDoubleCash = true;
+		print(`[Monetization] ${player.Name} owns 2× Cash gamepass`);
+	}
+	
+	if (hasAutoCollect && !playerData.saveData.hasAutoCollect) {
+		playerData.saveData.hasAutoCollect = true;
+		print(`[Monetization] ${player.Name} owns Auto-Collect gamepass`);
+	}
+	
+	if (hasVIP && !playerData.saveData.hasVIP) {
+		playerData.saveData.hasVIP = true;
+		if (!playerData.saveData.unlockedZones.includes("zone_vip")) {
+			playerData.saveData.unlockedZones.push("zone_vip");
+		}
+		print(`[Monetization] ${player.Name} owns VIP Zone gamepass`);
+	}
+	
+	sendPlayerDataUpdate(player);
+}
 
 print("[CurrencyManager] Service initialized");
