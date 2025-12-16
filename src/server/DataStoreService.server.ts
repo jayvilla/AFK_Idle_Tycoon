@@ -111,6 +111,9 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
         dailyRewardsClaimed:
           typedData.dailyRewardsClaimed ??
           DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
+        eventParticipation:
+          typedData.eventParticipation ??
+          DEFAULT_PLAYER_DATA.eventParticipation,
       };
     }
 
@@ -144,6 +147,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
       dailyRewardsClaimed:
         typedData.dailyRewardsClaimed ??
         DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
+      eventParticipation:
+        typedData.eventParticipation ?? DEFAULT_PLAYER_DATA.eventParticipation,
     };
 
     return migrated;

@@ -21,6 +21,8 @@ export interface PlayerSaveData {
 	// Phase 7 - Achievements & Leaderboards
 	unlockedAchievements: string[]; // Array of achievement IDs
 	dailyRewardsClaimed: number; // Total daily rewards claimed
+	// Phase 8 - Events
+	eventParticipation: { [eventId: string]: number }; // Event ID -> participation count
 }
 
 /**
@@ -44,6 +46,7 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	afkRewardCooldown: 0,
 	unlockedAchievements: [],
 	dailyRewardsClaimed: 0,
+	eventParticipation: {},
 };
 
 /**

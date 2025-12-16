@@ -98,5 +98,16 @@ const AchievementProgressUpdate = new Instance("RemoteEvent");
 AchievementProgressUpdate.Name = "AchievementProgressUpdate";
 AchievementProgressUpdate.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate };
+// Event update (server -> client) - sends active events
+const EventUpdate = new Instance("RemoteEvent");
+EventUpdate.Name = "EventUpdate";
+EventUpdate.Parent = remoteFolder;
+
+// Admin event activation (client -> server) - for testing/admin purposes
+// WARNING: In production, add proper admin authentication!
+const AdminActivateEvent = new Instance("RemoteEvent");
+AdminActivateEvent.Name = "AdminActivateEvent";
+AdminActivateEvent.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent };
 

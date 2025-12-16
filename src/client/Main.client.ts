@@ -68,6 +68,9 @@ const AchievementsUpdate = remoteEventsFolder.WaitForChild(
 const AchievementProgressUpdate = remoteEventsFolder.WaitForChild(
   "AchievementProgressUpdate"
 ) as RemoteEvent;
+const EventUpdate = remoteEventsFolder.WaitForChild(
+  "EventUpdate"
+) as RemoteEvent;
 
 // Create ScreenGui for UI
 const screenGui = new Instance("ScreenGui");
@@ -1655,6 +1658,254 @@ function stopLeaderboardAutoRefresh(): void {
     leaderboardRefreshInterval = undefined;
   }
 }
+
+// Phase 8 - Events UI
+
+// Track active events
+let activeEvents: Array<{
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  startTime: number;
+  endTime: number;
+}> = [];
+
+// Events notification frame
+let eventNotificationFrame: Frame | undefined = undefined;
+
+function showEventNotification(
+  eventId: string,
+  name: string,
+  description: string,
+  icon: string
+): void {
+  // Remove existing notification if any
+  if (eventNotificationFrame) {
+    eventNotificationFrame.Destroy();
+  }
+
+  const notification = new Instance("Frame");
+  notification.Name = "EventNotification";
+  notification.Size = new UDim2(0, 350, 0, 100);
+  notification.Position = new UDim2(1, -370, 0, 130); // Below achievement notification
+  notification.BackgroundColor3 = new Color3(0.4, 0.2, 0.8);
+  notification.BorderSizePixel = 0;
+  notification.Parent = screenGui;
+
+  const notificationCorner = new Instance("UICorner");
+  notificationCorner.CornerRadius = new UDim(0, 8);
+  notificationCorner.Parent = notification;
+
+  const iconLabel = new Instance("TextLabel");
+  iconLabel.Size = new UDim2(0, 60, 1, 0);
+  iconLabel.Position = new UDim2(0, 10, 0, 0);
+  iconLabel.BackgroundTransparency = 1;
+  iconLabel.Text = icon;
+  iconLabel.TextSize = 40;
+  iconLabel.Font = Enum.Font.GothamBold;
+  iconLabel.Parent = notification;
+
+  const nameLabel = new Instance("TextLabel");
+  nameLabel.Size = new UDim2(1, -80, 0, 30);
+  nameLabel.Position = new UDim2(0, 70, 0, 10);
+  nameLabel.BackgroundTransparency = 1;
+  nameLabel.Text = `Event Started: ${name}`;
+  nameLabel.TextColor3 = new Color3(1, 1, 1);
+  nameLabel.TextSize = 16;
+  nameLabel.Font = Enum.Font.GothamBold;
+  nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+  nameLabel.Parent = notification;
+
+  const descLabel = new Instance("TextLabel");
+  descLabel.Size = new UDim2(1, -80, 0, 50);
+  descLabel.Position = new UDim2(0, 70, 0, 40);
+  descLabel.BackgroundTransparency = 1;
+  descLabel.Text = description;
+  descLabel.TextColor3 = new Color3(0.9, 0.9, 0.9);
+  descLabel.TextSize = 12;
+  descLabel.Font = Enum.Font.Gotham;
+  descLabel.TextXAlignment = Enum.TextXAlignment.Left;
+  descLabel.TextWrapped = true;
+  descLabel.Parent = notification;
+
+  eventNotificationFrame = notification;
+
+  // Auto-hide after 8 seconds
+  task.spawn(() => {
+    task.wait(8);
+    if (notification.Parent) {
+      notification.Destroy();
+      eventNotificationFrame = undefined;
+    }
+  });
+}
+
+// Events display frame (in retention frame area)
+const eventsFrame = new Instance("Frame");
+eventsFrame.Name = "EventsFrame";
+eventsFrame.Size = new UDim2(0, 300, 0, 120);
+eventsFrame.Position = new UDim2(0, 20, 0, 700); // Below boost display
+eventsFrame.BackgroundColor3 = new Color3(0.15, 0.1, 0.2);
+eventsFrame.BorderSizePixel = 0;
+eventsFrame.Visible = menusVisible;
+eventsFrame.Parent = screenGui;
+
+const eventsCorner = new Instance("UICorner");
+eventsCorner.CornerRadius = new UDim(0, 8);
+eventsCorner.Parent = eventsFrame;
+
+const eventsTitle = new Instance("TextLabel");
+eventsTitle.Name = "Title";
+eventsTitle.Size = new UDim2(1, 0, 0, 30);
+eventsTitle.Position = new UDim2(0, 0, 0, 0);
+eventsTitle.BackgroundTransparency = 1;
+eventsTitle.Text = "🎉 Active Events";
+eventsTitle.TextColor3 = new Color3(1, 1, 1);
+eventsTitle.TextSize = 18;
+eventsTitle.Font = Enum.Font.GothamBold;
+eventsTitle.Parent = eventsFrame;
+
+const eventsPadding = new Instance("UIPadding");
+eventsPadding.PaddingLeft = new UDim(0, 10);
+eventsPadding.PaddingTop = new UDim(0, 5);
+eventsPadding.Parent = eventsTitle;
+
+const eventsList = new Instance("ScrollingFrame");
+eventsList.Name = "EventsList";
+eventsList.Size = new UDim2(1, -20, 1, -35);
+eventsList.Position = new UDim2(0, 10, 0, 35);
+eventsList.BackgroundTransparency = 1;
+eventsList.ScrollBarThickness = 4;
+eventsList.CanvasSize = new UDim2(0, 0, 0, 0);
+eventsList.Parent = eventsFrame;
+
+const eventsLayout = new Instance("UIListLayout");
+eventsLayout.Padding = new UDim(0, 5);
+eventsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
+eventsLayout.Parent = eventsList;
+
+// Update events UI
+function updateEventsUI(): void {
+  // Clear existing event items
+  for (const child of eventsList.GetChildren()) {
+    if (child.IsA("Frame")) {
+      child.Destroy();
+    }
+  }
+
+  if (activeEvents.size() === 0) {
+    const noEventsLabel = new Instance("TextLabel");
+    noEventsLabel.Size = new UDim2(1, 0, 0, 30);
+    noEventsLabel.BackgroundTransparency = 1;
+    noEventsLabel.Text = "No active events";
+    noEventsLabel.TextColor3 = new Color3(0.6, 0.6, 0.6);
+    noEventsLabel.TextSize = 12;
+    noEventsLabel.Font = Enum.Font.Gotham;
+    noEventsLabel.Parent = eventsList;
+  } else {
+    const currentTime = os.time();
+
+    for (const event of activeEvents) {
+      const timeRemaining = event.endTime - currentTime;
+      const minutesRemaining = math.floor(timeRemaining / 60);
+      const secondsRemaining = timeRemaining % 60;
+
+      const eventItem = new Instance("Frame");
+      eventItem.Name = event.id;
+      eventItem.Size = new UDim2(1, 0, 0, 50);
+      eventItem.BackgroundColor3 = new Color3(0.3, 0.2, 0.4);
+      eventItem.BorderSizePixel = 0;
+      eventItem.Parent = eventsList;
+
+      const itemCorner = new Instance("UICorner");
+      itemCorner.CornerRadius = new UDim(0, 6);
+      itemCorner.Parent = eventItem;
+
+      const iconLabel = new Instance("TextLabel");
+      iconLabel.Size = new UDim2(0, 30, 1, 0);
+      iconLabel.Position = new UDim2(0, 5, 0, 0);
+      iconLabel.BackgroundTransparency = 1;
+      iconLabel.Text = event.icon;
+      iconLabel.TextSize = 20;
+      iconLabel.Font = Enum.Font.GothamBold;
+      iconLabel.Parent = eventItem;
+
+      const nameLabel = new Instance("TextLabel");
+      nameLabel.Size = new UDim2(1, -40, 0, 20);
+      nameLabel.Position = new UDim2(0, 35, 0, 5);
+      nameLabel.BackgroundTransparency = 1;
+      nameLabel.Text = event.name;
+      nameLabel.TextColor3 = new Color3(1, 1, 1);
+      nameLabel.TextSize = 14;
+      nameLabel.Font = Enum.Font.GothamBold;
+      nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+      nameLabel.Parent = eventItem;
+
+      const timeLabel = new Instance("TextLabel");
+      timeLabel.Size = new UDim2(1, -40, 0, 20);
+      timeLabel.Position = new UDim2(0, 35, 0, 25);
+      timeLabel.BackgroundTransparency = 1;
+      timeLabel.Text = `${minutesRemaining}m ${secondsRemaining}s remaining`;
+      timeLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
+      timeLabel.TextSize = 11;
+      timeLabel.Font = Enum.Font.Gotham;
+      timeLabel.TextXAlignment = Enum.TextXAlignment.Left;
+      timeLabel.Parent = eventItem;
+    }
+  }
+
+  // Update canvas size
+  eventsList.CanvasSize = new UDim2(
+    0,
+    0,
+    0,
+    eventsLayout.AbsoluteContentSize.Y + 10
+  );
+}
+
+// Update events UI every second to refresh countdown
+task.spawn(() => {
+  while (true) {
+    task.wait(1);
+    if (eventsFrame.Visible) {
+      updateEventsUI();
+    }
+  }
+});
+
+// Listen for event updates
+EventUpdate.OnClientEvent.Connect(
+  (
+    events: Array<{
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      startTime: number;
+      endTime: number;
+    }>
+  ) => {
+    // Check for new events
+    const previousEventIds = activeEvents.map((e) => e.id);
+    const newEventIds = events.map((e) => e.id);
+
+    // Find newly started events
+    for (const event of events) {
+      if (!previousEventIds.includes(event.id)) {
+        showEventNotification(
+          event.id,
+          event.name,
+          event.description,
+          event.icon
+        );
+      }
+    }
+
+    activeEvents = events;
+    updateEventsUI();
+  }
+);
 
 print("[Client] Currency UI initialized");
 
