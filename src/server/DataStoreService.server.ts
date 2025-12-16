@@ -105,6 +105,12 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
           typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
         afkRewardCooldown:
           typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
+        unlockedAchievements:
+          typedData.unlockedAchievements ??
+          DEFAULT_PLAYER_DATA.unlockedAchievements,
+        dailyRewardsClaimed:
+          typedData.dailyRewardsClaimed ??
+          DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
       };
     }
 
@@ -132,6 +138,12 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
         typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
       afkRewardCooldown:
         typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
+      unlockedAchievements:
+        typedData.unlockedAchievements ??
+        DEFAULT_PLAYER_DATA.unlockedAchievements,
+      dailyRewardsClaimed:
+        typedData.dailyRewardsClaimed ??
+        DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
     };
 
     return migrated;

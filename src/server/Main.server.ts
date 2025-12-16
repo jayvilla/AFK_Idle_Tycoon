@@ -1,9 +1,10 @@
 import { Players, DataStoreService, MarketplaceService } from "@rbxts/services";
-import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse } from "../shared/RemoteEvents";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
 import { GAMEPASS_IDS, PRODUCT_IDS, BOOST_DURATION_1HOUR, BOOST_MULTIPLIER_2X, BOOST_MULTIPLIER_5X } from "../shared/MonetizationConfig";
 import { getCurrentDateString, isYesterday, getIdleStreakMultiplier, getDailyLoginReward, getAFKReward, AFK_REWARD_INTERVAL, PREMIUM_SESSION_MULTIPLIER, PREMIUM_REWARD_MULTIPLIER } from "../shared/RetentionConfig";
+import { ACHIEVEMENTS, getAchievement } from "../shared/AchievementsConfig";
 
 print("AFK Tycoon TypeScript server running");
 
@@ -15,12 +16,15 @@ const BASE_INCOME_PER_SECOND = 1; // Base income per second
 
 // DataStore configuration
 const DATASTORE_NAME = "PlayerData";
+const LEADERBOARD_DATASTORE_NAME = "Leaderboards";
 const MAX_RETRIES = 5;
 const RETRY_DELAY = 1; // seconds
 const SAVE_INTERVAL = 30; // Auto-save every 30 seconds
+const LEADERBOARD_UPDATE_INTERVAL = 60; // Update leaderboards every 60 seconds
 
-// Get DataStore
+// Get DataStores
 const dataStore = DataStoreService.GetDataStore(DATASTORE_NAME);
+const leaderboardDataStore = DataStoreService.GetDataStore(LEADERBOARD_DATASTORE_NAME);
 
 // Track pending saves
 const pendingSaves = new Map<number, boolean>();
@@ -105,6 +109,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
 		totalSessionTime: typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
 		afkRewardCooldown: typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
+		unlockedAchievements: typedData.unlockedAchievements ?? DEFAULT_PLAYER_DATA.unlockedAchievements,
+		dailyRewardsClaimed: typedData.dailyRewardsClaimed ?? DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
 	};
 	}
 	
@@ -125,6 +131,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		idleStreak: typedData.idleStreak ?? DEFAULT_PLAYER_DATA.idleStreak,
 		totalSessionTime: typedData.totalSessionTime ?? DEFAULT_PLAYER_DATA.totalSessionTime,
 		afkRewardCooldown: typedData.afkRewardCooldown ?? DEFAULT_PLAYER_DATA.afkRewardCooldown,
+		unlockedAchievements: typedData.unlockedAchievements ?? DEFAULT_PLAYER_DATA.unlockedAchievements,
+		dailyRewardsClaimed: typedData.dailyRewardsClaimed ?? DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
 	};
 		
 		return migrated;
@@ -280,6 +288,7 @@ function sendPlayerDataUpdate(player: Player): void {
 		idleStreak: playerData.saveData.idleStreak,
 		totalSessionTime: playerData.saveData.totalSessionTime,
 		loginStreak: playerData.saveData.loginStreak,
+		unlockedAchievements: playerData.saveData.unlockedAchievements,
 	});
 }
 
@@ -367,6 +376,21 @@ async function initializePlayer(player: Player): Promise<void> {
 		CurrencyUpdate.FireClient(player, saveData.currency);
 		RebirthCountUpdate.FireClient(player, saveData.rebirthCount);
 		sendPlayerDataUpdate(player);
+		sendAchievementsUpdate(player);
+		
+		// Update leaderboard DataStore on join
+		task.spawn(async () => {
+			await updateLeaderboardDataStore(
+				player.UserId,
+				player.Name,
+				saveData.currency,
+				saveData.rebirthCount,
+				saveData.totalSessionTime
+			);
+		});
+		
+		// Check achievements on join
+		checkAchievements(player);
 		
 		if (offlineEarnings > 0) {
 			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline), ${saveData.rebirthCount} rebirths`);
@@ -395,6 +419,8 @@ async function initializePlayer(player: Player): Promise<void> {
 				idleStreak: 0,
 				totalSessionTime: 0,
 				afkRewardCooldown: 0,
+				unlockedAchievements: [],
+				dailyRewardsClaimed: 0,
 			},
 			sessionStartTime: currentTime,
 			lastSaveTime: currentTime,
@@ -426,6 +452,17 @@ async function savePlayer(player: Player): Promise<void> {
 	try {
 		await savePlayerData(player.UserId, playerData.saveData);
 		playerData.lastSaveTime = os.time();
+		
+		// Update leaderboard DataStore
+		task.spawn(async () => {
+			await updateLeaderboardDataStore(
+				player.UserId,
+				player.Name,
+				playerData.saveData.currency,
+				playerData.saveData.rebirthCount,
+				playerData.saveData.totalSessionTime
+			);
+		});
 	} catch (error) {
 		warn(`[CurrencyManager] Failed to save data for ${player.Name}: ${error}`);
 	}
@@ -457,6 +494,11 @@ function addCurrency(player: Player, amount: number): void {
 
 	// Update client
 	CurrencyUpdate.FireClient(player, playerData.saveData.currency);
+	
+	// Check achievements when currency changes significantly (every 100 currency)
+	if (playerData.saveData.currency % 100 === 0) {
+		checkAchievements(player);
+	}
 
 	print(`[CurrencyManager] Added ${amount} currency to ${player.Name}. New total: ${playerData.saveData.currency}`);
 }
@@ -513,6 +555,11 @@ function processAFKIncome(): void {
 
 		// Add currency
 		addCurrency(player, income);
+		
+		// Update achievement progress periodically (every 30 seconds)
+		if (currentTime % 30 === 0) {
+			sendAchievementsUpdate(player);
+		}
 	}
 }
 
@@ -570,6 +617,10 @@ function handleUpgradePurchase(player: Player, upgradeId: string): void {
 	sendPlayerDataUpdate(player);
 
 	UpgradePurchaseResponse.FireClient(player, true, `${upgrade.name} upgraded to level ${currentLevel + 1}`);
+	
+	// Check achievements
+	checkAchievements(player);
+	
 	print(`[Upgrade] ${player.Name} purchased ${upgrade.name} level ${currentLevel + 1} for ${cost} currency`);
 }
 
@@ -619,6 +670,10 @@ function handleZoneUnlock(player: Player, zoneId: string): void {
 	sendPlayerDataUpdate(player);
 
 	ZoneUnlockResponse.FireClient(player, true, `${zone.name} unlocked!`);
+	
+	// Check achievements
+	checkAchievements(player);
+	
 	print(`[Zone] ${player.Name} unlocked ${zone.name} for ${zone.unlockCost} currency`);
 }
 
@@ -659,6 +714,9 @@ function handleRebirth(player: Player): void {
 
 	print(`[Rebirth] ${player.Name} performed rebirth #${playerData.saveData.rebirthCount}. New income multiplier: ${getRebirthIncomeMultiplier(playerData.saveData.rebirthCount)}x`);
 
+	// Check achievements
+	checkAchievements(player);
+	
 	// Save immediately after rebirth
 	savePlayer(player);
 }
@@ -748,6 +806,38 @@ AFKRewardClaimRequest.OnServerEvent.Connect((player) => {
 // Handle daily login reward claim requests
 DailyLoginClaimRequest.OnServerEvent.Connect((player) => {
 	handleDailyLoginClaim(player);
+});
+
+// Handle leaderboard requests
+LeaderboardRequest.OnServerEvent.Connect((player, ...args) => {
+	const leaderboardType = args[0] as "currency" | "rebirths" | "playtime";
+	if (typeIs(leaderboardType, "string") && (leaderboardType === "currency" || leaderboardType === "rebirths" || leaderboardType === "playtime")) {
+		task.spawn(async () => {
+			await handleLeaderboardRequest(player, leaderboardType);
+		});
+	}
+});
+
+// Auto-refresh leaderboards periodically
+task.spawn(() => {
+	while (true) {
+		task.wait(LEADERBOARD_UPDATE_INTERVAL);
+		
+		// Update leaderboard DataStore for all in-game players
+		for (const [player, playerData] of playerDataMap) {
+			if (player.Parent) {
+				task.spawn(async () => {
+					await updateLeaderboardDataStore(
+						player.UserId,
+						player.Name,
+						playerData.saveData.currency,
+						playerData.saveData.rebirthCount,
+						playerData.saveData.totalSessionTime
+					);
+				});
+			}
+		}
+	}
 });
 
 /**
@@ -976,8 +1066,309 @@ function handleDailyLoginClaim(player: Player): void {
 	// Update login date (already updated in initializePlayer, but ensure it's set)
 	playerData.saveData.lastLoginDate = currentDate;
 	
+	// Update daily rewards claimed count
+	playerData.saveData.dailyRewardsClaimed += 1;
+	
 	DailyLoginClaimResponse.FireClient(player, true, `Daily Login Reward: $${finalReward} (Day ${playerData.saveData.loginStreak})`);
 	print(`[Retention] ${player.Name} claimed daily login reward: $${finalReward} (Day ${playerData.saveData.loginStreak})`);
+	
+	// Check achievements
+	checkAchievements(player);
+	
+	// Update daily rewards claimed count
+	playerData.saveData.dailyRewardsClaimed += 1;
+	
+	// Check achievements
+	checkAchievements(player);
+}
+
+/**
+ * Check and unlock achievements for a player
+ */
+function checkAchievements(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	const saveData = playerData.saveData;
+	
+	// Check each achievement
+	for (const achievement of ACHIEVEMENTS) {
+		// Skip if already unlocked
+		if (saveData.unlockedAchievements.includes(achievement.id)) {
+			continue;
+		}
+		
+		let shouldUnlock = false;
+		
+		// Check achievement based on category
+		switch (achievement.category) {
+			case "currency":
+				shouldUnlock = saveData.currency >= achievement.requirement;
+				break;
+				
+			case "rebirth":
+				shouldUnlock = saveData.rebirthCount >= achievement.requirement;
+				break;
+				
+			case "upgrade":
+				if (achievement.id === "max_upgrade") {
+					// Check if any upgrade is maxed
+					for (const upgrade of UPGRADES) {
+						const level = saveData.upgradeLevels[upgrade.id] ?? 0;
+						if (upgrade.maxLevel !== -1 && level >= upgrade.maxLevel) {
+							shouldUnlock = true;
+							break;
+						}
+					}
+				} else {
+					// Count total upgrades purchased
+					let totalUpgrades = 0;
+					for (const [_, level] of pairs(saveData.upgradeLevels)) {
+						totalUpgrades += level;
+					}
+					shouldUnlock = totalUpgrades >= achievement.requirement;
+				}
+				break;
+				
+			case "zone":
+				shouldUnlock = saveData.unlockedZones.size() >= achievement.requirement;
+				break;
+				
+			case "time":
+				shouldUnlock = saveData.totalSessionTime >= achievement.requirement;
+				break;
+				
+			case "streak":
+				if (string.find(achievement.id, "idle")[0] !== undefined) {
+					shouldUnlock = saveData.idleStreak >= achievement.requirement;
+				} else if (string.find(achievement.id, "login")[0] !== undefined) {
+					shouldUnlock = saveData.loginStreak >= achievement.requirement;
+				}
+				break;
+				
+			case "milestone":
+				if (achievement.id === "first_vip") {
+					shouldUnlock = saveData.hasVIP;
+				} else if (achievement.id === "claim_daily") {
+					shouldUnlock = saveData.dailyRewardsClaimed >= achievement.requirement;
+				}
+				break;
+		}
+		
+		// Unlock achievement if requirement met
+		if (shouldUnlock) {
+			unlockAchievement(player, achievement.id);
+		}
+	}
+}
+
+/**
+ * Unlock an achievement for a player
+ */
+function unlockAchievement(player: Player, achievementId: string): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	const achievement = getAchievement(achievementId);
+	if (!achievement) {
+		return;
+	}
+	
+	// Add to unlocked list
+	if (!playerData.saveData.unlockedAchievements.includes(achievementId)) {
+		playerData.saveData.unlockedAchievements.push(achievementId);
+		
+		// Grant reward if applicable
+		if (achievement.reward) {
+			addCurrency(player, achievement.reward);
+		}
+		
+		// Notify client
+		AchievementUnlocked.FireClient(player, achievementId, achievement.name, achievement.description, achievement.icon, achievement.reward ?? 0);
+		
+		// Send updated achievements list
+		sendAchievementsUpdate(player);
+		
+		print(`[Achievements] ${player.Name} unlocked: ${achievement.name}`);
+	}
+}
+
+/**
+ * Calculate achievement progress
+ */
+function calculateAchievementProgress(player: Player, achievementId: string): number {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return 0;
+	}
+	
+	const achievement = getAchievement(achievementId);
+	if (!achievement) {
+		return 0;
+	}
+	
+	const saveData = playerData.saveData;
+	
+	// If already unlocked, return 100%
+	if (saveData.unlockedAchievements.includes(achievementId)) {
+		return 100;
+	}
+	
+	let currentValue = 0;
+	
+	switch (achievement.category) {
+		case "currency":
+			currentValue = saveData.currency;
+			break;
+		case "rebirth":
+			currentValue = saveData.rebirthCount;
+			break;
+		case "upgrade":
+			if (achievement.id === "max_upgrade") {
+				// Check if any upgrade is maxed
+				for (const upgrade of UPGRADES) {
+					const level = saveData.upgradeLevels[upgrade.id] ?? 0;
+					if (upgrade.maxLevel !== -1 && level >= upgrade.maxLevel) {
+						currentValue = 1;
+						break;
+					}
+				}
+			} else {
+				// Count total upgrades purchased
+				for (const [_, level] of pairs(saveData.upgradeLevels)) {
+					currentValue += level;
+				}
+			}
+			break;
+		case "zone":
+			currentValue = saveData.unlockedZones.size();
+			break;
+		case "time":
+			currentValue = saveData.totalSessionTime;
+			break;
+		case "streak":
+			if (string.find(achievement.id, "idle")[0] !== undefined) {
+				currentValue = saveData.idleStreak;
+			} else if (string.find(achievement.id, "login")[0] !== undefined) {
+				currentValue = saveData.loginStreak;
+			}
+			break;
+		case "milestone":
+			if (achievement.id === "first_vip") {
+				currentValue = saveData.hasVIP ? 1 : 0;
+			} else if (achievement.id === "claim_daily") {
+				currentValue = saveData.dailyRewardsClaimed;
+			}
+			break;
+	}
+	
+	// Calculate percentage (cap at 100%)
+	const progress = math.min(100, math.floor((currentValue / achievement.requirement) * 100));
+	return progress;
+}
+
+/**
+ * Send achievements update to client
+ */
+function sendAchievementsUpdate(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	AchievementsUpdate.FireClient(player, playerData.saveData.unlockedAchievements);
+	
+	// Send progress data for all achievements
+	const progressData: { [achievementId: string]: number } = {};
+	for (const achievement of ACHIEVEMENTS) {
+		progressData[achievement.id] = calculateAchievementProgress(player, achievement.id);
+	}
+	AchievementProgressUpdate.FireClient(player, progressData);
+}
+
+/**
+ * Update leaderboard DataStore with player's current stats
+ */
+async function updateLeaderboardDataStore(userId: number, username: string, currency: number, rebirths: number, playtime: number): Promise<void> {
+	const key = `player_${userId}`;
+	const data = {
+		userId: userId,
+		username: username,
+		currency: currency,
+		rebirths: rebirths,
+		playtime: playtime,
+		lastUpdate: os.time(),
+	};
+	
+	await retryDataStoreOperation(
+		() => {
+			leaderboardDataStore.SetAsync(key, data);
+			return undefined;
+		},
+		`UpdateLeaderboard_${userId}`,
+		userId
+	);
+}
+
+/**
+ * Get leaderboard from DataStore
+ * Note: DataStore doesn't support listing all keys efficiently, so this shows in-game players
+ * For a full persistent leaderboard, consider using OrderedDataStore or maintaining a separate leaderboard cache
+ */
+async function getLeaderboardFromDataStore(leaderboardType: "currency" | "rebirths" | "playtime"): Promise<Array<{ userId: number; username: string; value: number }>> {
+	const leaderboardData: Array<{ userId: number; username: string; value: number }> = [];
+	
+	// Add current in-game players (their data is always up-to-date)
+	for (const [p, playerData] of playerDataMap) {
+		if (!p.Parent) {
+			continue;
+		}
+		
+		let value = 0;
+		switch (leaderboardType) {
+			case "currency":
+				value = playerData.saveData.currency;
+				break;
+			case "rebirths":
+				value = playerData.saveData.rebirthCount;
+				break;
+			case "playtime":
+				value = playerData.saveData.totalSessionTime;
+				break;
+		}
+		
+		leaderboardData.push({
+			userId: p.UserId,
+			username: p.Name,
+			value: value,
+		});
+	}
+	
+	// Sort by value (descending)
+	table.sort(leaderboardData, (a, b) => a.value < b.value);
+	
+	// Take top 10
+	const top10: Array<{ userId: number; username: string; value: number }> = [];
+	for (let i = 0; i < math.min(10, leaderboardData.size()); i++) {
+		top10.push(leaderboardData[i]);
+	}
+	
+	return top10;
+}
+
+/**
+ * Handle leaderboard request
+ */
+async function handleLeaderboardRequest(player: Player, leaderboardType: "currency" | "rebirths" | "playtime"): Promise<void> {
+	// Get leaderboard from DataStore (includes in-game players)
+	const leaderboardData = await getLeaderboardFromDataStore(leaderboardType);
+	
+	// Send to client
+	LeaderboardResponse.FireClient(player, leaderboardType, leaderboardData);
 }
 
 print("[CurrencyManager] Service initialized");

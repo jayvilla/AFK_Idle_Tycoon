@@ -18,6 +18,9 @@ export interface PlayerSaveData {
 	idleStreak: number; // Minutes of continuous play
 	totalSessionTime: number; // Total minutes played (all time)
 	afkRewardCooldown: number; // Timestamp when next AFK reward is available
+	// Phase 7 - Achievements & Leaderboards
+	unlockedAchievements: string[]; // Array of achievement IDs
+	dailyRewardsClaimed: number; // Total daily rewards claimed
 }
 
 /**
@@ -39,6 +42,8 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	idleStreak: 0,
 	totalSessionTime: 0,
 	afkRewardCooldown: 0,
+	unlockedAchievements: [],
+	dailyRewardsClaimed: 0,
 };
 
 /**

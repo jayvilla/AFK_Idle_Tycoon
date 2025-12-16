@@ -73,5 +73,30 @@ const DailyLoginClaimResponse = new Instance("RemoteEvent");
 DailyLoginClaimResponse.Name = "DailyLoginClaimResponse";
 DailyLoginClaimResponse.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse };
+// Leaderboard request (client -> server)
+const LeaderboardRequest = new Instance("RemoteEvent");
+LeaderboardRequest.Name = "LeaderboardRequest";
+LeaderboardRequest.Parent = remoteFolder;
+
+// Leaderboard response (server -> client)
+const LeaderboardResponse = new Instance("RemoteEvent");
+LeaderboardResponse.Name = "LeaderboardResponse";
+LeaderboardResponse.Parent = remoteFolder;
+
+// Achievement unlock notification (server -> client)
+const AchievementUnlocked = new Instance("RemoteEvent");
+AchievementUnlocked.Name = "AchievementUnlocked";
+AchievementUnlocked.Parent = remoteFolder;
+
+// Achievements update (server -> client)
+const AchievementsUpdate = new Instance("RemoteEvent");
+AchievementsUpdate.Name = "AchievementsUpdate";
+AchievementsUpdate.Parent = remoteFolder;
+
+// Achievement progress update (server -> client) - sends progress data for all achievements
+const AchievementProgressUpdate = new Instance("RemoteEvent");
+AchievementProgressUpdate.Name = "AchievementProgressUpdate";
+AchievementProgressUpdate.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate };
 

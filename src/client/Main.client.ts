@@ -4,6 +4,7 @@ import {
   MarketplaceService,
 } from "@rbxts/services";
 import { GAMEPASS_IDS, PRODUCT_IDS } from "../shared/MonetizationConfig";
+import { ACHIEVEMENTS, getAchievement } from "../shared/AchievementsConfig";
 
 // Get the local player
 const player = Players.LocalPlayer;
@@ -52,6 +53,21 @@ const DailyLoginClaimRequest = remoteEventsFolder.WaitForChild(
 const DailyLoginClaimResponse = remoteEventsFolder.WaitForChild(
   "DailyLoginClaimResponse"
 ) as RemoteEvent;
+const LeaderboardRequest = remoteEventsFolder.WaitForChild(
+  "LeaderboardRequest"
+) as RemoteEvent;
+const LeaderboardResponse = remoteEventsFolder.WaitForChild(
+  "LeaderboardResponse"
+) as RemoteEvent;
+const AchievementUnlocked = remoteEventsFolder.WaitForChild(
+  "AchievementUnlocked"
+) as RemoteEvent;
+const AchievementsUpdate = remoteEventsFolder.WaitForChild(
+  "AchievementsUpdate"
+) as RemoteEvent;
+const AchievementProgressUpdate = remoteEventsFolder.WaitForChild(
+  "AchievementProgressUpdate"
+) as RemoteEvent;
 
 // Create ScreenGui for UI
 const screenGui = new Instance("ScreenGui");
@@ -59,11 +75,30 @@ screenGui.Name = "CurrencyUI";
 screenGui.ResetOnSpawn = false;
 screenGui.Parent = playerGui;
 
-// Create currency display frame
+// Menu toggle button (always visible)
+const menuToggleButton = new Instance("TextButton");
+menuToggleButton.Name = "MenuToggle";
+menuToggleButton.Size = new UDim2(0, 50, 0, 50);
+menuToggleButton.Position = new UDim2(0, 20, 0, 20);
+menuToggleButton.BackgroundColor3 = new Color3(0.2, 0.2, 0.2);
+menuToggleButton.Text = "☰";
+menuToggleButton.TextColor3 = new Color3(1, 1, 1);
+menuToggleButton.TextSize = 24;
+menuToggleButton.Font = Enum.Font.GothamBold;
+menuToggleButton.Parent = screenGui;
+
+const menuToggleCorner = new Instance("UICorner");
+menuToggleCorner.CornerRadius = new UDim(0, 8);
+menuToggleCorner.Parent = menuToggleButton;
+
+// Track menu state
+let menusVisible = true;
+
+// Create currency display frame (always visible)
 const currencyFrame = new Instance("Frame");
 currencyFrame.Name = "CurrencyFrame";
 currencyFrame.Size = new UDim2(0, 300, 0, 60);
-currencyFrame.Position = new UDim2(0, 20, 0, 20);
+currencyFrame.Position = new UDim2(0, 80, 0, 20); // Moved right to make room for toggle button
 currencyFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
 currencyFrame.BorderSizePixel = 0;
 currencyFrame.Parent = screenGui;
@@ -209,6 +244,7 @@ retentionFrame.Size = new UDim2(0, 300, 0, 200);
 retentionFrame.Position = new UDim2(0, 20, 0, 410); // Below gamepass frame (200 + 200 + 10 spacing)
 retentionFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
 retentionFrame.BorderSizePixel = 0;
+retentionFrame.Visible = menusVisible; // Controlled by toggle
 retentionFrame.Parent = screenGui;
 
 const retentionCorner = new Instance("UICorner");
@@ -407,6 +443,7 @@ upgradesFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 upgradesFrame.BorderSizePixel = 0;
 upgradesFrame.ScrollBarThickness = 8;
 upgradesFrame.CanvasSize = new UDim2(0, 0, 0, 0);
+upgradesFrame.Visible = menusVisible; // Controlled by toggle
 upgradesFrame.Parent = screenGui;
 
 const upgradesCorner = new Instance("UICorner");
@@ -682,6 +719,7 @@ gamepassFrame.Size = new UDim2(0, 200, 0, 200);
 gamepassFrame.Position = new UDim2(0, 20, 0, 200);
 gamepassFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 gamepassFrame.BorderSizePixel = 0;
+gamepassFrame.Visible = menusVisible; // Controlled by toggle
 gamepassFrame.Parent = screenGui;
 
 const gamepassCorner = new Instance("UICorner");
@@ -815,6 +853,7 @@ productsFrame.Size = new UDim2(0, 200, 0, 150);
 productsFrame.Position = new UDim2(0, 20, 0, 620); // Below retention frame (410 + 200 + 10 spacing)
 productsFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 productsFrame.BorderSizePixel = 0;
+productsFrame.Visible = menusVisible; // Controlled by toggle
 productsFrame.Parent = screenGui;
 
 const productsCorner = new Instance("UICorner");
@@ -922,6 +961,7 @@ boostDisplayFrame.Size = new UDim2(0, 200, 0, 80);
 boostDisplayFrame.Position = new UDim2(0, 20, 0, 780); // Below products frame (620 + 150 + 10 spacing)
 boostDisplayFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 boostDisplayFrame.BorderSizePixel = 0;
+boostDisplayFrame.Visible = menusVisible; // Controlled by toggle
 boostDisplayFrame.Parent = screenGui;
 
 const boostDisplayCorner = new Instance("UICorner");
@@ -991,6 +1031,7 @@ PlayerDataUpdate.OnClientEvent.Connect(
     idleStreak?: number;
     totalSessionTime?: number;
     loginStreak?: number;
+    unlockedAchievements?: string[];
   }) => {
     upgradeLevels = data.upgradeLevels;
     unlockedZones = data.unlockedZones;
@@ -1002,13 +1043,618 @@ PlayerDataUpdate.OnClientEvent.Connect(
     if (data.totalSessionTime !== undefined)
       totalSessionTime = data.totalSessionTime;
     if (data.loginStreak !== undefined) loginStreak = data.loginStreak;
+    if (data.unlockedAchievements !== undefined)
+      unlockedAchievements = data.unlockedAchievements;
     updateUpgradeUI();
     updateZoneUI();
     updateGamepassUI();
     updateBoostDisplay();
     updateRetentionUI();
+    if (achievementsFrame.Visible) {
+      updateAchievementsUI();
+    }
   }
 );
+
+// Phase 7 - Achievements & Leaderboards UI
+
+// Track unlocked achievements and progress
+let unlockedAchievements: string[] = [];
+let achievementProgress: { [achievementId: string]: number } = {};
+
+// Achievements Frame
+const achievementsFrame = new Instance("ScrollingFrame");
+achievementsFrame.Name = "AchievementsFrame";
+achievementsFrame.Size = new UDim2(0, 400, 0, 500);
+achievementsFrame.Position = new UDim2(0.5, -200, 0.5, -250);
+achievementsFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+achievementsFrame.BorderSizePixel = 0;
+achievementsFrame.ScrollBarThickness = 8;
+achievementsFrame.CanvasSize = new UDim2(0, 0, 0, 0);
+achievementsFrame.Visible = false; // Hidden by default
+achievementsFrame.Parent = screenGui;
+
+const achievementsCorner = new Instance("UICorner");
+achievementsCorner.CornerRadius = new UDim(0, 8);
+achievementsCorner.Parent = achievementsFrame;
+
+const achievementsTitle = new Instance("TextLabel");
+achievementsTitle.Name = "Title";
+achievementsTitle.Size = new UDim2(1, 0, 0, 40);
+achievementsTitle.BackgroundTransparency = 1;
+achievementsTitle.Text = "🏆 Achievements";
+achievementsTitle.TextColor3 = new Color3(1, 1, 1);
+achievementsTitle.TextSize = 24;
+achievementsTitle.Font = Enum.Font.GothamBold;
+achievementsTitle.Parent = achievementsFrame;
+
+const achievementsList = new Instance("Frame");
+achievementsList.Name = "AchievementsList";
+achievementsList.Size = new UDim2(1, -20, 1, -50);
+achievementsList.Position = new UDim2(0, 10, 0, 45);
+achievementsList.BackgroundTransparency = 1;
+achievementsList.Parent = achievementsFrame;
+
+const achievementsLayout = new Instance("UIListLayout");
+achievementsLayout.Padding = new UDim(0, 8);
+achievementsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
+achievementsLayout.Parent = achievementsList;
+
+// Close button for achievements
+const achievementsCloseButton = new Instance("TextButton");
+achievementsCloseButton.Name = "CloseButton";
+achievementsCloseButton.Size = new UDim2(0, 30, 0, 30);
+achievementsCloseButton.Position = new UDim2(1, -35, 0, 5);
+achievementsCloseButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+achievementsCloseButton.Text = "×";
+achievementsCloseButton.TextColor3 = new Color3(1, 1, 1);
+achievementsCloseButton.TextSize = 20;
+achievementsCloseButton.Font = Enum.Font.GothamBold;
+achievementsCloseButton.Parent = achievementsFrame;
+
+const achievementsCloseCorner = new Instance("UICorner");
+achievementsCloseCorner.CornerRadius = new UDim(0, 6);
+achievementsCloseCorner.Parent = achievementsCloseButton;
+
+achievementsCloseButton.MouseButton1Click.Connect(() => {
+  achievementsFrame.Visible = false;
+});
+
+// Leaderboard Frame
+const leaderboardFrame = new Instance("Frame");
+leaderboardFrame.Name = "LeaderboardFrame";
+leaderboardFrame.Size = new UDim2(0, 400, 0, 500);
+leaderboardFrame.Position = new UDim2(0.5, -200, 0.5, -250);
+leaderboardFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+leaderboardFrame.BorderSizePixel = 0;
+leaderboardFrame.Visible = false; // Hidden by default
+leaderboardFrame.Parent = screenGui;
+
+const leaderboardCorner = new Instance("UICorner");
+leaderboardCorner.CornerRadius = new UDim(0, 8);
+leaderboardCorner.Parent = leaderboardFrame;
+
+const leaderboardTitle = new Instance("TextLabel");
+leaderboardTitle.Name = "Title";
+leaderboardTitle.Size = new UDim2(1, 0, 0, 40);
+leaderboardTitle.BackgroundTransparency = 1;
+leaderboardTitle.Text = "📊 Leaderboards";
+leaderboardTitle.TextColor3 = new Color3(1, 1, 1);
+leaderboardTitle.TextSize = 24;
+leaderboardTitle.Font = Enum.Font.GothamBold;
+leaderboardTitle.Parent = leaderboardFrame;
+
+// Leaderboard type buttons
+const leaderboardButtonFrame = new Instance("Frame");
+leaderboardButtonFrame.Name = "ButtonFrame";
+leaderboardButtonFrame.Size = new UDim2(1, -20, 0, 40);
+leaderboardButtonFrame.Position = new UDim2(0, 10, 0, 45);
+leaderboardButtonFrame.BackgroundTransparency = 1;
+leaderboardButtonFrame.Parent = leaderboardFrame;
+
+const leaderboardButtonLayout = new Instance("UIListLayout");
+leaderboardButtonLayout.FillDirection = Enum.FillDirection.Horizontal;
+leaderboardButtonLayout.Padding = new UDim(0, 5);
+leaderboardButtonLayout.Parent = leaderboardButtonFrame;
+
+const currencyLeaderboardButton = new Instance("TextButton");
+currencyLeaderboardButton.Name = "CurrencyButton";
+currencyLeaderboardButton.Size = new UDim2(0, 120, 0, 35);
+currencyLeaderboardButton.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
+currencyLeaderboardButton.Text = "💰 Currency";
+currencyLeaderboardButton.TextColor3 = new Color3(1, 1, 1);
+currencyLeaderboardButton.TextSize = 14;
+currencyLeaderboardButton.Font = Enum.Font.Gotham;
+currencyLeaderboardButton.Parent = leaderboardButtonFrame;
+
+const rebirthsLeaderboardButton = new Instance("TextButton");
+rebirthsLeaderboardButton.Name = "RebirthsButton";
+rebirthsLeaderboardButton.Size = new UDim2(0, 120, 0, 35);
+rebirthsLeaderboardButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+rebirthsLeaderboardButton.Text = "🔄 Rebirths";
+rebirthsLeaderboardButton.TextColor3 = new Color3(1, 1, 1);
+rebirthsLeaderboardButton.TextSize = 14;
+rebirthsLeaderboardButton.Font = Enum.Font.Gotham;
+rebirthsLeaderboardButton.Parent = leaderboardButtonFrame;
+
+const playtimeLeaderboardButton = new Instance("TextButton");
+playtimeLeaderboardButton.Name = "PlaytimeButton";
+playtimeLeaderboardButton.Size = new UDim2(0, 120, 0, 35);
+playtimeLeaderboardButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+playtimeLeaderboardButton.Text = "⏰ Playtime";
+playtimeLeaderboardButton.TextColor3 = new Color3(1, 1, 1);
+playtimeLeaderboardButton.TextSize = 14;
+playtimeLeaderboardButton.Font = Enum.Font.Gotham;
+playtimeLeaderboardButton.Parent = leaderboardButtonFrame;
+
+const leaderboardList = new Instance("ScrollingFrame");
+leaderboardList.Name = "LeaderboardList";
+leaderboardList.Size = new UDim2(1, -20, 1, -100);
+leaderboardList.Position = new UDim2(0, 10, 0, 90);
+leaderboardList.BackgroundTransparency = 1;
+leaderboardList.ScrollBarThickness = 8;
+leaderboardList.CanvasSize = new UDim2(0, 0, 0, 0);
+leaderboardList.Parent = leaderboardFrame;
+
+const leaderboardListLayout = new Instance("UIListLayout");
+leaderboardListLayout.Padding = new UDim(0, 5);
+leaderboardListLayout.SortOrder = Enum.SortOrder.LayoutOrder;
+leaderboardListLayout.Parent = leaderboardList;
+
+// Close button for leaderboard
+const leaderboardCloseButton = new Instance("TextButton");
+leaderboardCloseButton.Name = "CloseButton";
+leaderboardCloseButton.Size = new UDim2(0, 30, 0, 30);
+leaderboardCloseButton.Position = new UDim2(1, -35, 0, 5);
+leaderboardCloseButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
+leaderboardCloseButton.Text = "×";
+leaderboardCloseButton.TextColor3 = new Color3(1, 1, 1);
+leaderboardCloseButton.TextSize = 20;
+leaderboardCloseButton.Font = Enum.Font.GothamBold;
+leaderboardCloseButton.Parent = leaderboardFrame;
+
+const leaderboardCloseCorner = new Instance("UICorner");
+leaderboardCloseCorner.CornerRadius = new UDim(0, 6);
+leaderboardCloseCorner.Parent = leaderboardCloseButton;
+
+leaderboardCloseButton.MouseButton1Click.Connect(() => {
+  leaderboardFrame.Visible = false;
+  stopLeaderboardAutoRefresh();
+});
+
+// Buttons to open achievements and leaderboards (add to retention frame)
+// Position them after the login streak label (which ends at Y: 190)
+const achievementsButton = new Instance("TextButton");
+achievementsButton.Name = "AchievementsButton";
+achievementsButton.Size = new UDim2(1, -20, 0, 30);
+achievementsButton.Position = new UDim2(0, 10, 0, 195); // After login streak label
+achievementsButton.BackgroundColor3 = new Color3(0.4, 0.2, 0.8);
+achievementsButton.Text = "🏆 Achievements";
+achievementsButton.TextColor3 = new Color3(1, 1, 1);
+achievementsButton.TextSize = 14;
+achievementsButton.Font = Enum.Font.Gotham;
+achievementsButton.Parent = retentionFrame;
+
+const achievementsButtonCorner = new Instance("UICorner");
+achievementsButtonCorner.CornerRadius = new UDim(0, 6);
+achievementsButtonCorner.Parent = achievementsButton;
+
+const leaderboardButton = new Instance("TextButton");
+leaderboardButton.Name = "LeaderboardButton";
+leaderboardButton.Size = new UDim2(1, -20, 0, 30);
+leaderboardButton.Position = new UDim2(0, 10, 0, 230); // After achievements button
+leaderboardButton.BackgroundColor3 = new Color3(0.2, 0.4, 0.8);
+leaderboardButton.Text = "📊 Leaderboards";
+leaderboardButton.TextColor3 = new Color3(1, 1, 1);
+leaderboardButton.TextSize = 14;
+leaderboardButton.Font = Enum.Font.Gotham;
+leaderboardButton.Parent = retentionFrame;
+
+const leaderboardButtonCorner = new Instance("UICorner");
+leaderboardButtonCorner.CornerRadius = new UDim(0, 6);
+leaderboardButtonCorner.Parent = leaderboardButton;
+
+// Update retention frame size to accommodate new buttons
+retentionFrame.Size = new UDim2(0, 300, 0, 270); // 195 + 30 + 5 spacing + 30 + 10 padding
+
+// Achievement unlock notification
+let achievementNotificationFrame: Frame | undefined = undefined;
+
+function showAchievementNotification(
+  achievementId: string,
+  name: string,
+  description: string,
+  icon: string,
+  reward: number
+): void {
+  // Remove existing notification if any
+  if (achievementNotificationFrame) {
+    achievementNotificationFrame.Destroy();
+  }
+
+  const notification = new Instance("Frame");
+  notification.Name = "AchievementNotification";
+  notification.Size = new UDim2(0, 350, 0, 100);
+  notification.Position = new UDim2(1, -370, 0, 20);
+  notification.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
+  notification.BorderSizePixel = 0;
+  notification.Parent = screenGui;
+
+  const notificationCorner = new Instance("UICorner");
+  notificationCorner.CornerRadius = new UDim(0, 8);
+  notificationCorner.Parent = notification;
+
+  const iconLabel = new Instance("TextLabel");
+  iconLabel.Size = new UDim2(0, 60, 1, 0);
+  iconLabel.Position = new UDim2(0, 10, 0, 0);
+  iconLabel.BackgroundTransparency = 1;
+  iconLabel.Text = icon;
+  iconLabel.TextSize = 40;
+  iconLabel.Font = Enum.Font.GothamBold;
+  iconLabel.Parent = notification;
+
+  const nameLabel = new Instance("TextLabel");
+  nameLabel.Size = new UDim2(1, -80, 0, 30);
+  nameLabel.Position = new UDim2(0, 70, 0, 10);
+  nameLabel.BackgroundTransparency = 1;
+  nameLabel.Text = `Achievement Unlocked: ${name}`;
+  nameLabel.TextColor3 = new Color3(1, 1, 1);
+  nameLabel.TextSize = 16;
+  nameLabel.Font = Enum.Font.GothamBold;
+  nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+  nameLabel.Parent = notification;
+
+  const descLabel = new Instance("TextLabel");
+  descLabel.Size = new UDim2(1, -80, 0, 40);
+  descLabel.Position = new UDim2(0, 70, 0, 40);
+  descLabel.BackgroundTransparency = 1;
+  descLabel.Text = description;
+  descLabel.TextColor3 = new Color3(0.9, 0.9, 0.9);
+  descLabel.TextSize = 12;
+  descLabel.Font = Enum.Font.Gotham;
+  descLabel.TextXAlignment = Enum.TextXAlignment.Left;
+  descLabel.TextWrapped = true;
+  descLabel.Parent = notification;
+
+  if (reward > 0) {
+    const rewardLabel = new Instance("TextLabel");
+    rewardLabel.Size = new UDim2(1, -80, 0, 20);
+    rewardLabel.Position = new UDim2(0, 70, 0, 80);
+    rewardLabel.BackgroundTransparency = 1;
+    rewardLabel.Text = `Reward: $${formatNumber(reward)}`;
+    rewardLabel.TextColor3 = new Color3(1, 1, 0.5);
+    rewardLabel.TextSize = 14;
+    rewardLabel.Font = Enum.Font.GothamBold;
+    rewardLabel.TextXAlignment = Enum.TextXAlignment.Left;
+    rewardLabel.Parent = notification;
+  }
+
+  achievementNotificationFrame = notification;
+
+  // Auto-hide after 5 seconds
+  task.spawn(() => {
+    task.wait(5);
+    if (notification.Parent) {
+      notification.Destroy();
+      achievementNotificationFrame = undefined;
+    }
+  });
+}
+
+// Update achievements UI
+function updateAchievementsUI(): void {
+  // Clear existing achievement items
+  for (const child of achievementsList.GetChildren()) {
+    if (child.IsA("Frame")) {
+      child.Destroy();
+    }
+  }
+
+  // Create achievement items
+  for (const achievement of ACHIEVEMENTS) {
+    const isUnlocked = unlockedAchievements.includes(achievement.id);
+    const progress = achievementProgress[achievement.id] ?? 0;
+
+    const achievementItem = new Instance("Frame");
+    achievementItem.Name = achievement.id;
+    achievementItem.Size = new UDim2(1, 0, 0, 75); // Increased height for progress bar
+    achievementItem.BackgroundColor3 = isUnlocked
+      ? new Color3(0.2, 0.5, 0.2)
+      : new Color3(0.2, 0.2, 0.2);
+    achievementItem.BorderSizePixel = 0;
+    achievementItem.Parent = achievementsList;
+
+    const itemCorner = new Instance("UICorner");
+    itemCorner.CornerRadius = new UDim(0, 6);
+    itemCorner.Parent = achievementItem;
+
+    const iconLabel = new Instance("TextLabel");
+    iconLabel.Size = new UDim2(0, 50, 1, 0);
+    iconLabel.Position = new UDim2(0, 5, 0, 0);
+    iconLabel.BackgroundTransparency = 1;
+    iconLabel.Text = achievement.icon;
+    iconLabel.TextSize = 30;
+    iconLabel.Font = Enum.Font.GothamBold;
+    iconLabel.Parent = achievementItem;
+
+    const nameLabel = new Instance("TextLabel");
+    nameLabel.Size = new UDim2(1, -60, 0, 25);
+    nameLabel.Position = new UDim2(0, 55, 0, 5);
+    nameLabel.BackgroundTransparency = 1;
+    nameLabel.Text = isUnlocked ? `✓ ${achievement.name}` : achievement.name;
+    nameLabel.TextColor3 = isUnlocked
+      ? new Color3(1, 1, 1)
+      : new Color3(0.7, 0.7, 0.7);
+    nameLabel.TextSize = 16;
+    nameLabel.Font = Enum.Font.GothamBold;
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+    nameLabel.Parent = achievementItem;
+
+    const descLabel = new Instance("TextLabel");
+    descLabel.Size = new UDim2(1, -60, 0, 20);
+    descLabel.Position = new UDim2(0, 55, 0, 30);
+    descLabel.BackgroundTransparency = 1;
+    descLabel.Text = achievement.description;
+    descLabel.TextColor3 = isUnlocked
+      ? new Color3(0.9, 0.9, 0.9)
+      : new Color3(0.5, 0.5, 0.5);
+    descLabel.TextSize = 12;
+    descLabel.Font = Enum.Font.Gotham;
+    descLabel.TextXAlignment = Enum.TextXAlignment.Left;
+    descLabel.TextWrapped = true;
+    descLabel.Parent = achievementItem;
+
+    // Progress bar (only show if not unlocked)
+    if (!isUnlocked && progress > 0) {
+      const progressBarFrame = new Instance("Frame");
+      progressBarFrame.Name = "ProgressBar";
+      progressBarFrame.Size = new UDim2(1, -60, 0, 8);
+      progressBarFrame.Position = new UDim2(0, 55, 0, 55);
+      progressBarFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
+      progressBarFrame.BorderSizePixel = 0;
+      progressBarFrame.Parent = achievementItem;
+
+      const progressBarCorner = new Instance("UICorner");
+      progressBarCorner.CornerRadius = new UDim(0, 4);
+      progressBarCorner.Parent = progressBarFrame;
+
+      const progressBarFill = new Instance("Frame");
+      progressBarFill.Name = "ProgressFill";
+      progressBarFill.Size = new UDim2(progress / 100, 0, 1, 0);
+      progressBarFill.Position = new UDim2(0, 0, 0, 0);
+      progressBarFill.BackgroundColor3 = new Color3(0.2, 0.6, 1);
+      progressBarFill.BorderSizePixel = 0;
+      progressBarFill.Parent = progressBarFrame;
+
+      const progressBarFillCorner = new Instance("UICorner");
+      progressBarFillCorner.CornerRadius = new UDim(0, 4);
+      progressBarFillCorner.Parent = progressBarFill;
+
+      const progressLabel = new Instance("TextLabel");
+      progressLabel.Size = new UDim2(1, 0, 1, 0);
+      progressLabel.Position = new UDim2(0, 0, 0, 0);
+      progressLabel.BackgroundTransparency = 1;
+      progressLabel.Text = `${progress}%`;
+      progressLabel.TextColor3 = new Color3(1, 1, 1);
+      progressLabel.TextSize = 10;
+      progressLabel.Font = Enum.Font.GothamBold;
+      progressLabel.Parent = progressBarFrame;
+    }
+  }
+
+  // Update canvas size
+  achievementsFrame.CanvasSize = new UDim2(
+    0,
+    0,
+    0,
+    achievementsLayout.AbsoluteContentSize.Y + 20
+  );
+}
+
+// Update leaderboard UI
+let currentLeaderboardType: "currency" | "rebirths" | "playtime" = "currency";
+
+function updateLeaderboardUI(
+  leaderboardType: "currency" | "rebirths" | "playtime",
+  data: Array<{ userId: number; username: string; value: number }>
+): void {
+  // Clear existing leaderboard items
+  for (const child of leaderboardList.GetChildren()) {
+    if (child.IsA("Frame")) {
+      child.Destroy();
+    }
+  }
+
+  // Update button states
+  currencyLeaderboardButton.BackgroundColor3 =
+    leaderboardType === "currency"
+      ? new Color3(0.2, 0.6, 0.2)
+      : new Color3(0.3, 0.3, 0.3);
+  rebirthsLeaderboardButton.BackgroundColor3 =
+    leaderboardType === "rebirths"
+      ? new Color3(0.2, 0.6, 0.2)
+      : new Color3(0.3, 0.3, 0.3);
+  playtimeLeaderboardButton.BackgroundColor3 =
+    leaderboardType === "playtime"
+      ? new Color3(0.2, 0.6, 0.2)
+      : new Color3(0.3, 0.3, 0.3);
+
+  // Create leaderboard items
+  for (let i = 0; i < data.size(); i++) {
+    const entry = data[i];
+    const rank = i + 1;
+
+    const leaderboardItem = new Instance("Frame");
+    leaderboardItem.Name = `Rank${rank}`;
+    leaderboardItem.Size = new UDim2(1, 0, 0, 40);
+    leaderboardItem.BackgroundColor3 =
+      rank <= 3 ? new Color3(0.25, 0.25, 0.35) : new Color3(0.2, 0.2, 0.2);
+    leaderboardItem.BorderSizePixel = 0;
+    leaderboardItem.Parent = leaderboardList;
+
+    const itemCorner = new Instance("UICorner");
+    itemCorner.CornerRadius = new UDim(0, 6);
+    itemCorner.Parent = leaderboardItem;
+
+    const rankLabel = new Instance("TextLabel");
+    rankLabel.Size = new UDim2(0, 40, 1, 0);
+    rankLabel.Position = new UDim2(0, 5, 0, 0);
+    rankLabel.BackgroundTransparency = 1;
+    rankLabel.Text = `#${rank}`;
+    rankLabel.TextColor3 =
+      rank === 1
+        ? new Color3(1, 0.84, 0)
+        : rank === 2
+        ? new Color3(0.75, 0.75, 0.75)
+        : rank === 3
+        ? new Color3(0.8, 0.5, 0.2)
+        : new Color3(0.7, 0.7, 0.7);
+    rankLabel.TextSize = 18;
+    rankLabel.Font = Enum.Font.GothamBold;
+    rankLabel.Parent = leaderboardItem;
+
+    const nameLabel = new Instance("TextLabel");
+    nameLabel.Size = new UDim2(1, -150, 1, 0);
+    nameLabel.Position = new UDim2(0, 50, 0, 0);
+    nameLabel.BackgroundTransparency = 1;
+    nameLabel.Text = entry.username;
+    nameLabel.TextColor3 = new Color3(1, 1, 1);
+    nameLabel.TextSize = 16;
+    nameLabel.Font = Enum.Font.Gotham;
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+    nameLabel.Parent = leaderboardItem;
+
+    const valueLabel = new Instance("TextLabel");
+    valueLabel.Size = new UDim2(0, 100, 1, 0);
+    valueLabel.Position = new UDim2(1, -105, 0, 0);
+    valueLabel.BackgroundTransparency = 1;
+    let valueText = "";
+    if (leaderboardType === "currency") {
+      valueText = `$${formatNumber(entry.value)}`;
+    } else if (leaderboardType === "rebirths") {
+      valueText = `${entry.value}`;
+    } else {
+      valueText = `${formatNumber(entry.value)}m`;
+    }
+    valueLabel.Text = valueText;
+    valueLabel.TextColor3 = new Color3(1, 1, 0.5);
+    valueLabel.TextSize = 14;
+    valueLabel.Font = Enum.Font.GothamBold;
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Right;
+    valueLabel.Parent = leaderboardItem;
+  }
+
+  // Update canvas size
+  leaderboardList.CanvasSize = new UDim2(
+    0,
+    0,
+    0,
+    leaderboardListLayout.AbsoluteContentSize.Y + 20
+  );
+}
+
+// Button click handlers
+achievementsButton.MouseButton1Click.Connect(() => {
+  achievementsFrame.Visible = true;
+  updateAchievementsUI();
+});
+
+leaderboardButton.MouseButton1Click.Connect(() => {
+  leaderboardFrame.Visible = true;
+  currentLeaderboardType = "currency";
+  LeaderboardRequest.FireServer("currency");
+  startLeaderboardAutoRefresh();
+});
+
+currencyLeaderboardButton.MouseButton1Click.Connect(() => {
+  currentLeaderboardType = "currency";
+  LeaderboardRequest.FireServer("currency");
+  // Auto-refresh will continue with new type
+});
+
+rebirthsLeaderboardButton.MouseButton1Click.Connect(() => {
+  currentLeaderboardType = "rebirths";
+  LeaderboardRequest.FireServer("rebirths");
+  // Auto-refresh will continue with new type
+});
+
+playtimeLeaderboardButton.MouseButton1Click.Connect(() => {
+  currentLeaderboardType = "playtime";
+  LeaderboardRequest.FireServer("playtime");
+  // Auto-refresh will continue with new type
+});
+
+// Listen for achievement unlock
+AchievementUnlocked.OnClientEvent.Connect(
+  (
+    achievementId: string,
+    name: string,
+    description: string,
+    icon: string,
+    reward: number
+  ) => {
+    showAchievementNotification(achievementId, name, description, icon, reward);
+    // Update achievements list if it's visible
+    if (achievementsFrame.Visible) {
+      updateAchievementsUI();
+    }
+  }
+);
+
+// Listen for achievements update
+AchievementsUpdate.OnClientEvent.Connect((achievementIds: string[]) => {
+  unlockedAchievements = achievementIds;
+  if (achievementsFrame.Visible) {
+    updateAchievementsUI();
+  }
+});
+
+// Listen for achievement progress update
+AchievementProgressUpdate.OnClientEvent.Connect(
+  (progress: { [achievementId: string]: number }) => {
+    achievementProgress = progress;
+    if (achievementsFrame.Visible) {
+      updateAchievementsUI();
+    }
+  }
+);
+
+// Listen for leaderboard response
+LeaderboardResponse.OnClientEvent.Connect(
+  (
+    leaderboardType: "currency" | "rebirths" | "playtime",
+    data: Array<{ userId: number; username: string; value: number }>
+  ) => {
+    updateLeaderboardUI(leaderboardType, data);
+  }
+);
+
+// Auto-refresh leaderboards when frame is visible
+let leaderboardRefreshInterval: thread | undefined = undefined;
+
+function startLeaderboardAutoRefresh(): void {
+  // Clear existing interval if any
+  if (leaderboardRefreshInterval) {
+    task.cancel(leaderboardRefreshInterval);
+  }
+
+  // Refresh every 10 seconds
+  leaderboardRefreshInterval = task.spawn(() => {
+    while (leaderboardFrame.Visible) {
+      task.wait(10);
+      if (leaderboardFrame.Visible) {
+        LeaderboardRequest.FireServer(currentLeaderboardType);
+      }
+    }
+  });
+}
+
+function stopLeaderboardAutoRefresh(): void {
+  if (leaderboardRefreshInterval) {
+    task.cancel(leaderboardRefreshInterval);
+    leaderboardRefreshInterval = undefined;
+  }
+}
 
 print("[Client] Currency UI initialized");
 
