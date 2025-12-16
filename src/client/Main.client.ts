@@ -8,12 +8,30 @@ import { ACHIEVEMENTS, getAchievement } from "../shared/AchievementsConfig";
 
 // Get the local player
 const player = Players.LocalPlayer;
+print("[Client] Script starting...");
+print(`[Client] Player: ${player.Name}`);
+
 const playerGui = player.WaitForChild("PlayerGui") as PlayerGui;
+print(`[Client] PlayerGui found: ${playerGui.Name}`);
+
+// Create ScreenGui for UI FIRST (before waiting for RemoteEvents)
+print("[Client] Creating ScreenGui...");
+const screenGui = new Instance("ScreenGui");
+screenGui.Name = "CurrencyUI";
+screenGui.ResetOnSpawn = false;
+screenGui.Enabled = true;
+screenGui.Parent = playerGui;
+print(
+  `[Client] ScreenGui created and parented. Enabled: ${screenGui.Enabled}, Parent: ${screenGui.Parent?.Name}`
+);
 
 // Wait for RemoteEvents to be created by server
+print("[Client] Waiting for RemoteEvents...");
 const remoteEventsFolder = ReplicatedStorage.WaitForChild(
   "RemoteEvents"
 ) as Folder;
+print("[Client] RemoteEvents folder found");
+
 const CurrencyUpdate = remoteEventsFolder.WaitForChild(
   "CurrencyUpdate"
 ) as RemoteEvent;
@@ -71,26 +89,12 @@ const AchievementProgressUpdate = remoteEventsFolder.WaitForChild(
 const EventUpdate = remoteEventsFolder.WaitForChild(
   "EventUpdate"
 ) as RemoteEvent;
-const SettingsUpdateRequest = remoteEventsFolder.WaitForChild(
-  "SettingsUpdateRequest"
-) as RemoteEvent;
-const SettingsUpdateResponse = remoteEventsFolder.WaitForChild(
-  "SettingsUpdateResponse"
-) as RemoteEvent;
-const FriendsRequest = remoteEventsFolder.WaitForChild(
-  "FriendsRequest"
-) as RemoteEvent;
-const FriendsResponse = remoteEventsFolder.WaitForChild(
-  "FriendsResponse"
-) as RemoteEvent;
+// Settings and Friends removed - buttons don't work
 
-// Create ScreenGui for UI
-const screenGui = new Instance("ScreenGui");
-screenGui.Name = "CurrencyUI";
-screenGui.ResetOnSpawn = false;
-screenGui.Parent = playerGui;
+print("[Client] All RemoteEvents loaded");
 
 // Menu toggle button (always visible)
+print("[Client] Creating menu toggle button...");
 const menuToggleButton = new Instance("TextButton");
 menuToggleButton.Name = "MenuToggle";
 menuToggleButton.Size = new UDim2(0, 50, 0, 50);
@@ -100,7 +104,11 @@ menuToggleButton.Text = "☰";
 menuToggleButton.TextColor3 = new Color3(1, 1, 1);
 menuToggleButton.TextSize = 24;
 menuToggleButton.Font = Enum.Font.GothamBold;
+menuToggleButton.Visible = true;
 menuToggleButton.Parent = screenGui;
+print(
+  `[Client] Menu toggle button created. Visible: ${menuToggleButton.Visible}`
+);
 
 const menuToggleCorner = new Instance("UICorner");
 menuToggleCorner.CornerRadius = new UDim(0, 8);
@@ -110,13 +118,18 @@ menuToggleCorner.Parent = menuToggleButton;
 let menusVisible = true;
 
 // Create currency display frame (always visible)
+print("[Client] Creating currency frame...");
 const currencyFrame = new Instance("Frame");
 currencyFrame.Name = "CurrencyFrame";
 currencyFrame.Size = new UDim2(0, 300, 0, 60);
 currencyFrame.Position = new UDim2(0, 80, 0, 20); // Moved right to make room for toggle button
 currencyFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
 currencyFrame.BorderSizePixel = 0;
+currencyFrame.Visible = true;
 currencyFrame.Parent = screenGui;
+print(
+  `[Client] Currency frame created. Visible: ${currencyFrame.Visible}, Parent: ${currencyFrame.Parent?.Name}`
+);
 
 // Add corner radius
 const corner = new Instance("UICorner");
@@ -185,7 +198,7 @@ rebirthCostLabel.Parent = rebirthButton;
 const rebirthCountLabel = new Instance("TextLabel");
 rebirthCountLabel.Name = "RebirthCountLabel";
 rebirthCountLabel.Size = new UDim2(0, 200, 0, 30);
-rebirthCountLabel.Position = new UDim2(0, 20, 0, 150);
+rebirthCountLabel.Position = new UDim2(0, 20, 0, 150); // Below rebirth button
 rebirthCountLabel.BackgroundTransparency = 1;
 rebirthCountLabel.Text = "Rebirths: 0";
 rebirthCountLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
@@ -251,13 +264,12 @@ function getRebirthCost(count: number): number {
   return math.floor(BASE_COST * math.pow(MULTIPLIER, count));
 }
 
-// Phase 6 - Retention UI
-// Create retention frame (positioned below gamepass frame)
+// Phase 6 - Retention/Rewards UI - On screen, smaller
 const retentionFrame = new Instance("Frame");
 retentionFrame.Name = "RetentionFrame";
-retentionFrame.Size = new UDim2(0, 300, 0, 200);
-retentionFrame.Position = new UDim2(0, 20, 0, 410); // Below gamepass frame (200 + 200 + 10 spacing)
-retentionFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.1);
+retentionFrame.Size = new UDim2(0, 180, 0, 200); // Smaller
+retentionFrame.Position = new UDim2(0, 20, 0, 300); // Left side, below gamepass
+retentionFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 retentionFrame.BorderSizePixel = 0;
 retentionFrame.Visible = menusVisible; // Controlled by toggle
 retentionFrame.Parent = screenGui;
@@ -268,12 +280,12 @@ retentionCorner.Parent = retentionFrame;
 
 const retentionTitle = new Instance("TextLabel");
 retentionTitle.Name = "Title";
-retentionTitle.Size = new UDim2(1, 0, 0, 30);
+retentionTitle.Size = new UDim2(1, 0, 0, 25);
 retentionTitle.Position = new UDim2(0, 0, 0, 0);
 retentionTitle.BackgroundTransparency = 1;
 retentionTitle.Text = "🎁 Rewards";
 retentionTitle.TextColor3 = new Color3(1, 1, 1);
-retentionTitle.TextSize = 18;
+retentionTitle.TextSize = 14;
 retentionTitle.Font = Enum.Font.GothamBold;
 retentionTitle.Parent = retentionFrame;
 
@@ -285,8 +297,8 @@ retentionPadding.Parent = retentionTitle;
 // Daily login reward button
 const dailyLoginButton = new Instance("TextButton");
 dailyLoginButton.Name = "DailyLoginButton";
-dailyLoginButton.Size = new UDim2(1, -20, 0, 35);
-dailyLoginButton.Position = new UDim2(0, 10, 0, 35);
+dailyLoginButton.Size = new UDim2(1, -10, 0, 28); // Smaller
+dailyLoginButton.Position = new UDim2(0, 5, 0, 30); // Below title
 dailyLoginButton.BackgroundColor3 = new Color3(0.2, 0.6, 1);
 dailyLoginButton.Text = "📅 Claim Daily Reward";
 dailyLoginButton.TextColor3 = new Color3(1, 1, 1);
@@ -301,8 +313,8 @@ dailyLoginCorner.Parent = dailyLoginButton;
 // AFK reward button
 const afkRewardButton = new Instance("TextButton");
 afkRewardButton.Name = "AFKRewardButton";
-afkRewardButton.Size = new UDim2(1, -20, 0, 35);
-afkRewardButton.Position = new UDim2(0, 10, 0, 75);
+afkRewardButton.Size = new UDim2(1, -10, 0, 28); // Smaller
+afkRewardButton.Position = new UDim2(0, 5, 0, 63); // Below daily login
 afkRewardButton.BackgroundColor3 = new Color3(0.8, 0.4, 0.2);
 afkRewardButton.Text = "⏰ Claim AFK Reward";
 afkRewardButton.TextColor3 = new Color3(1, 1, 1);
@@ -317,8 +329,8 @@ afkRewardCorner.Parent = afkRewardButton;
 // Idle streak display
 const idleStreakLabel = new Instance("TextLabel");
 idleStreakLabel.Name = "IdleStreakLabel";
-idleStreakLabel.Size = new UDim2(1, -20, 0, 25);
-idleStreakLabel.Position = new UDim2(0, 10, 0, 115);
+idleStreakLabel.Size = new UDim2(1, -10, 0, 18); // Smaller
+idleStreakLabel.Position = new UDim2(0, 5, 0, 96); // Below AFK button
 idleStreakLabel.BackgroundTransparency = 1;
 idleStreakLabel.Text = "⏱️ Idle Streak: 0 min";
 idleStreakLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
@@ -330,8 +342,8 @@ idleStreakLabel.Parent = retentionFrame;
 // Session time display
 const sessionTimeLabel = new Instance("TextLabel");
 sessionTimeLabel.Name = "SessionTimeLabel";
-sessionTimeLabel.Size = new UDim2(1, -20, 0, 25);
-sessionTimeLabel.Position = new UDim2(0, 10, 0, 140);
+sessionTimeLabel.Size = new UDim2(1, -10, 0, 18); // Smaller
+sessionTimeLabel.Position = new UDim2(0, 5, 0, 114); // Below idle streak
 sessionTimeLabel.BackgroundTransparency = 1;
 sessionTimeLabel.Text = "📊 Total Playtime: 0 min";
 sessionTimeLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
@@ -343,8 +355,8 @@ sessionTimeLabel.Parent = retentionFrame;
 // Login streak display
 const loginStreakLabel = new Instance("TextLabel");
 loginStreakLabel.Name = "LoginStreakLabel";
-loginStreakLabel.Size = new UDim2(1, -20, 0, 25);
-loginStreakLabel.Position = new UDim2(0, 10, 0, 165);
+loginStreakLabel.Size = new UDim2(1, -10, 0, 18); // Smaller
+loginStreakLabel.Position = new UDim2(0, 5, 0, 132); // Below session time
 loginStreakLabel.BackgroundTransparency = 1;
 loginStreakLabel.Text = "🔥 Login Streak: Day 0";
 loginStreakLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
@@ -449,11 +461,12 @@ PlayerDataUpdate.OnClientEvent.Connect(
   }
 );
 
-// Create upgrades/scrolling frame
+// Create upgrades/scrolling frame - TOP RIGHT
 const upgradesFrame = new Instance("ScrollingFrame");
 upgradesFrame.Name = "UpgradesFrame";
-upgradesFrame.Size = new UDim2(0, 350, 0, 400);
-upgradesFrame.Position = new UDim2(1, -370, 0, 20);
+upgradesFrame.Size = new UDim2(0, 280, 0, 450); // Bigger vertically to see last item
+upgradesFrame.Position = new UDim2(1, -20, 0, -25); // Aligned to right edge, moved up 25px
+upgradesFrame.AnchorPoint = new Vector2(1, 0); // Anchor to top right
 upgradesFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 upgradesFrame.BorderSizePixel = 0;
 upgradesFrame.ScrollBarThickness = 8;
@@ -727,73 +740,86 @@ CurrencyUpdate.OnClientEvent.Connect((newCurrency: number) => {
   updateZoneUI();
 });
 
-// Gamepass UI
-const gamepassFrame = new Instance("Frame");
-gamepassFrame.Name = "GamepassFrame";
-gamepassFrame.Size = new UDim2(0, 200, 0, 200);
-gamepassFrame.Position = new UDim2(0, 20, 0, 200);
-gamepassFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
-gamepassFrame.BorderSizePixel = 0;
-gamepassFrame.Visible = menusVisible; // Controlled by toggle
-gamepassFrame.Parent = screenGui;
+// Gamepass UI - On screen, smaller
+const gamepassUI = (() => {
+  const frame = new Instance("Frame");
+  frame.Name = "GamepassFrame";
+  frame.Size = new UDim2(0, 180, 0, 140); // Smaller
+  frame.Position = new UDim2(0, 20, 0, 150); // Left side, below currency
+  frame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+  frame.BorderSizePixel = 0;
+  frame.Visible = menusVisible; // Controlled by toggle
+  frame.Parent = screenGui;
 
-const gamepassCorner = new Instance("UICorner");
-gamepassCorner.CornerRadius = new UDim(0, 8);
-gamepassCorner.Parent = gamepassFrame;
+  const corner = new Instance("UICorner");
+  corner.CornerRadius = new UDim(0, 8);
+  corner.Parent = frame;
 
-const gamepassTitle = new Instance("TextLabel");
-gamepassTitle.Name = "Title";
-gamepassTitle.Size = new UDim2(1, 0, 0, 30);
-gamepassTitle.BackgroundTransparency = 1;
-gamepassTitle.Text = "Gamepasses";
-gamepassTitle.TextColor3 = new Color3(1, 1, 1);
-gamepassTitle.TextSize = 18;
-gamepassTitle.Font = Enum.Font.GothamBold;
-gamepassTitle.Parent = gamepassFrame;
+  const title = new Instance("TextLabel");
+  title.Name = "Title";
+  title.Size = new UDim2(1, 0, 0, 25);
+  title.BackgroundTransparency = 1;
+  title.Text = "🎮 Gamepasses";
+  title.TextColor3 = new Color3(1, 1, 1);
+  title.TextSize = 14;
+  title.Font = Enum.Font.GothamBold;
+  title.Parent = frame;
 
-const gamepassList = new Instance("Frame");
-gamepassList.Name = "GamepassList";
-gamepassList.Size = new UDim2(1, -10, 1, -35);
-gamepassList.Position = new UDim2(0, 5, 0, 35);
-gamepassList.BackgroundTransparency = 1;
-gamepassList.Parent = gamepassFrame;
+  // No close button needed - menu is always visible on screen
 
-const gamepassLayout = new Instance("UIListLayout");
-gamepassLayout.Padding = new UDim(0, 5);
-gamepassLayout.SortOrder = Enum.SortOrder.LayoutOrder;
-gamepassLayout.Parent = gamepassList;
+  // Simple Frame with UIListLayout
+  const list = new Instance("Frame");
+  list.Name = "GamepassList";
+  list.Size = new UDim2(1, -10, 1, -30);
+  list.Position = new UDim2(0, 5, 0, 30);
+  list.BackgroundTransparency = 1;
+  list.Parent = frame;
+
+  const layout = new Instance("UIListLayout");
+  layout.Padding = new UDim(0, 5);
+  layout.SortOrder = Enum.SortOrder.LayoutOrder;
+  layout.Parent = list;
+
+  return { frame, list, layout };
+})();
+
+const gamepassFrame = gamepassUI.frame;
+const gamepassList = gamepassUI.list;
+const gamepassLayout = gamepassUI.layout;
+
+// No canvas size updates needed - using simple Frame
 
 // Gamepass buttons
 const doubleCashButton = new Instance("TextButton");
 doubleCashButton.Name = "DoubleCash";
-doubleCashButton.Size = new UDim2(1, 0, 0, 40);
+doubleCashButton.Size = new UDim2(1, 0, 0, 30); // Smaller
 doubleCashButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
 doubleCashButton.BorderSizePixel = 0;
 doubleCashButton.Text = "2× Cash";
 doubleCashButton.TextColor3 = new Color3(1, 1, 1);
-doubleCashButton.TextSize = 14;
+doubleCashButton.TextSize = 12;
 doubleCashButton.Font = Enum.Font.Gotham;
 doubleCashButton.Parent = gamepassList;
 
 const autoCollectButton = new Instance("TextButton");
 autoCollectButton.Name = "AutoCollect";
-autoCollectButton.Size = new UDim2(1, 0, 0, 40);
+autoCollectButton.Size = new UDim2(1, 0, 0, 30); // Smaller
 autoCollectButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
 autoCollectButton.BorderSizePixel = 0;
 autoCollectButton.Text = "Auto Collect";
 autoCollectButton.TextColor3 = new Color3(1, 1, 1);
-autoCollectButton.TextSize = 14;
+autoCollectButton.TextSize = 12;
 autoCollectButton.Font = Enum.Font.Gotham;
-autoCollectButton.Parent = gamepassList;
+autoCollectButton.Parent = gamepassList; // Directly to ScrollingFrame
 
 const vipButton = new Instance("TextButton");
 vipButton.Name = "VIP";
-vipButton.Size = new UDim2(1, 0, 0, 40);
+vipButton.Size = new UDim2(1, 0, 0, 30); // Smaller
 vipButton.BackgroundColor3 = new Color3(0.3, 0.3, 0.3);
 vipButton.BorderSizePixel = 0;
 vipButton.Text = "VIP Zone";
 vipButton.TextColor3 = new Color3(1, 1, 1);
-vipButton.TextSize = 14;
+vipButton.TextSize = 12;
 vipButton.Font = Enum.Font.Gotham;
 vipButton.Parent = gamepassList;
 
@@ -861,73 +887,82 @@ function updateGamepassUI(): void {
   // Boost display is handled separately
 }
 
-// Developer Products UI (positioned below retention frame)
-const productsFrame = new Instance("Frame");
-productsFrame.Name = "ProductsFrame";
-productsFrame.Size = new UDim2(0, 200, 0, 150);
-productsFrame.Position = new UDim2(0, 20, 0, 620); // Below retention frame (410 + 200 + 10 spacing)
-productsFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
-productsFrame.BorderSizePixel = 0;
-productsFrame.Visible = menusVisible; // Controlled by toggle
-productsFrame.Parent = screenGui;
+// Developer Products UI - On screen, smaller
+const productsUI = (() => {
+  const frame = new Instance("Frame");
+  frame.Name = "ProductsFrame";
+  frame.Size = new UDim2(0, 180, 0, 130); // Smaller
+  frame.Position = new UDim2(1, -220, 1, -300); // Right side, above boost display (boost is at -160, products is 130 tall, so -300 gives 10px spacing to match boost-events spacing)
+  frame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
+  frame.BorderSizePixel = 0;
+  frame.Visible = menusVisible; // Controlled by toggle
+  frame.Parent = screenGui;
 
-const productsCorner = new Instance("UICorner");
-productsCorner.CornerRadius = new UDim(0, 8);
-productsCorner.Parent = productsFrame;
+  const corner = new Instance("UICorner");
+  corner.CornerRadius = new UDim(0, 8);
+  corner.Parent = frame;
 
-const productsTitle = new Instance("TextLabel");
-productsTitle.Name = "Title";
-productsTitle.Size = new UDim2(1, 0, 0, 25);
-productsTitle.BackgroundTransparency = 1;
-productsTitle.Text = "Products";
-productsTitle.TextColor3 = new Color3(1, 1, 1);
-productsTitle.TextSize = 16;
-productsTitle.Font = Enum.Font.GothamBold;
-productsTitle.Parent = productsFrame;
+  const title = new Instance("TextLabel");
+  title.Name = "Title";
+  title.Size = new UDim2(1, 0, 0, 25);
+  title.BackgroundTransparency = 1;
+  title.Text = "🛒 Products";
+  title.TextColor3 = new Color3(1, 1, 1);
+  title.TextSize = 14;
+  title.Font = Enum.Font.GothamBold;
+  title.Parent = frame;
 
-const productsList = new Instance("Frame");
-productsList.Name = "ProductsList";
-productsList.Size = new UDim2(1, -10, 1, -30);
-productsList.Position = new UDim2(0, 5, 0, 28);
-productsList.BackgroundTransparency = 1;
-productsList.Parent = productsFrame;
+  // Simple Frame with UIListLayout
+  const list = new Instance("Frame");
+  list.Name = "ProductsList";
+  list.Size = new UDim2(1, -10, 1, -30);
+  list.Position = new UDim2(0, 5, 0, 30);
+  list.BackgroundTransparency = 1;
+  list.Parent = frame;
 
-const productsLayout = new Instance("UIListLayout");
-productsLayout.Padding = new UDim(0, 5);
-productsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
-productsLayout.Parent = productsList;
+  const layout = new Instance("UIListLayout");
+  layout.Padding = new UDim(0, 5);
+  layout.SortOrder = Enum.SortOrder.LayoutOrder;
+  layout.Parent = list;
+
+  return { frame, list, layout };
+})();
+
+const productsFrame = productsUI.frame;
+const productsList = productsUI.list;
+const productsLayout = productsUI.layout;
 
 // Product buttons
 const boost2xButton = new Instance("TextButton");
 boost2xButton.Name = "Boost2X";
-boost2xButton.Size = new UDim2(1, 0, 0, 35);
+boost2xButton.Size = new UDim2(1, 0, 0, 28); // Smaller
 boost2xButton.BackgroundColor3 = new Color3(0.3, 0.5, 0.3);
 boost2xButton.BorderSizePixel = 0;
 boost2xButton.Text = "2× Boost (1h)";
 boost2xButton.TextColor3 = new Color3(1, 1, 1);
-boost2xButton.TextSize = 13;
+boost2xButton.TextSize = 11;
 boost2xButton.Font = Enum.Font.Gotham;
 boost2xButton.Parent = productsList;
 
 const boost5xButton = new Instance("TextButton");
 boost5xButton.Name = "Boost5X";
-boost5xButton.Size = new UDim2(1, 0, 0, 35);
+boost5xButton.Size = new UDim2(1, 0, 0, 28); // Smaller
 boost5xButton.BackgroundColor3 = new Color3(0.5, 0.3, 0.3);
 boost5xButton.BorderSizePixel = 0;
 boost5xButton.Text = "5× Boost (1h)";
 boost5xButton.TextColor3 = new Color3(1, 1, 1);
-boost5xButton.TextSize = 13;
+boost5xButton.TextSize = 11;
 boost5xButton.Font = Enum.Font.Gotham;
 boost5xButton.Parent = productsList;
 
 const rebirthSkipButton = new Instance("TextButton");
 rebirthSkipButton.Name = "RebirthSkip";
-rebirthSkipButton.Size = new UDim2(1, 0, 0, 35);
+rebirthSkipButton.Size = new UDim2(1, 0, 0, 28); // Smaller
 rebirthSkipButton.BackgroundColor3 = new Color3(0.4, 0.3, 0.5);
 rebirthSkipButton.BorderSizePixel = 0;
 rebirthSkipButton.Text = "Rebirth Skip";
 rebirthSkipButton.TextColor3 = new Color3(1, 1, 1);
-rebirthSkipButton.TextSize = 13;
+rebirthSkipButton.TextSize = 11;
 rebirthSkipButton.Font = Enum.Font.Gotham;
 rebirthSkipButton.Parent = productsList;
 
@@ -937,6 +972,8 @@ rebirthSkipButton.Parent = productsList;
   corner.CornerRadius = new UDim(0, 6);
   corner.Parent = btn;
 });
+
+// No canvas size updates needed - using simple Frame
 
 // Product purchase handlers
 boost2xButton.MouseButton1Click.Connect(() => {
@@ -969,14 +1006,14 @@ rebirthSkipButton.MouseButton1Click.Connect(() => {
   }
 });
 
-// Boost display
+// Boost display - BOTTOM RIGHT (above events)
 const boostDisplayFrame = new Instance("Frame");
 boostDisplayFrame.Name = "BoostDisplay";
-boostDisplayFrame.Size = new UDim2(0, 200, 0, 80);
-boostDisplayFrame.Position = new UDim2(0, 20, 0, 780); // Below products frame (620 + 150 + 10 spacing)
+boostDisplayFrame.Size = new UDim2(0, 200, 0, 80); // Smaller
+boostDisplayFrame.Position = new UDim2(1, -220, 1, -160); // Bottom right, above events
 boostDisplayFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.15);
 boostDisplayFrame.BorderSizePixel = 0;
-boostDisplayFrame.Visible = menusVisible; // Controlled by toggle
+boostDisplayFrame.Visible = true; // Always visible
 boostDisplayFrame.Parent = screenGui;
 
 const boostDisplayCorner = new Instance("UICorner");
@@ -1242,7 +1279,7 @@ leaderboardCloseButton.MouseButton1Click.Connect(() => {
 const achievementsButton = new Instance("TextButton");
 achievementsButton.Name = "AchievementsButton";
 achievementsButton.Size = new UDim2(1, -20, 0, 30);
-achievementsButton.Position = new UDim2(0, 10, 0, 195); // After login streak label
+achievementsButton.Position = new UDim2(0, 5, 0, 155); // After login streak label
 achievementsButton.BackgroundColor3 = new Color3(0.4, 0.2, 0.8);
 achievementsButton.Text = "🏆 Achievements";
 achievementsButton.TextColor3 = new Color3(1, 1, 1);
@@ -1257,7 +1294,7 @@ achievementsButtonCorner.Parent = achievementsButton;
 const leaderboardButton = new Instance("TextButton");
 leaderboardButton.Name = "LeaderboardButton";
 leaderboardButton.Size = new UDim2(1, -20, 0, 30);
-leaderboardButton.Position = new UDim2(0, 10, 0, 230); // After achievements button
+leaderboardButton.Position = new UDim2(0, 5, 0, 190); // After achievements button
 leaderboardButton.BackgroundColor3 = new Color3(0.2, 0.4, 0.8);
 leaderboardButton.Text = "📊 Leaderboards";
 leaderboardButton.TextColor3 = new Color3(1, 1, 1);
@@ -1753,14 +1790,14 @@ function showEventNotification(
   });
 }
 
-// Events display frame (in retention frame area)
+// Events display frame - BOTTOM RIGHT
 const eventsFrame = new Instance("Frame");
 eventsFrame.Name = "EventsFrame";
-eventsFrame.Size = new UDim2(0, 300, 0, 120);
-eventsFrame.Position = new UDim2(0, 20, 0, 700); // Below boost display
+eventsFrame.Size = new UDim2(0, 200, 0, 100); // Smaller
+eventsFrame.Position = new UDim2(1, -220, 1, -70); // Bottom right corner
 eventsFrame.BackgroundColor3 = new Color3(0.15, 0.1, 0.2);
 eventsFrame.BorderSizePixel = 0;
-eventsFrame.Visible = menusVisible;
+eventsFrame.Visible = true; // Always visible
 eventsFrame.Parent = screenGui;
 
 const eventsCorner = new Instance("UICorner");
@@ -1792,15 +1829,23 @@ eventsList.ScrollBarThickness = 4;
 eventsList.CanvasSize = new UDim2(0, 0, 0, 0);
 eventsList.Parent = eventsFrame;
 
+// Container frame inside ScrollingFrame for layout
+const eventsListContainer = new Instance("Frame");
+eventsListContainer.Name = "Container";
+eventsListContainer.Size = new UDim2(1, 0, 0, 0);
+eventsListContainer.BackgroundTransparency = 1;
+eventsListContainer.AutomaticSize = Enum.AutomaticSize.Y;
+eventsListContainer.Parent = eventsList;
+
 const eventsLayout = new Instance("UIListLayout");
 eventsLayout.Padding = new UDim(0, 5);
 eventsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
-eventsLayout.Parent = eventsList;
+eventsLayout.Parent = eventsListContainer;
 
 // Update events UI
 function updateEventsUI(): void {
   // Clear existing event items
-  for (const child of eventsList.GetChildren()) {
+  for (const child of eventsListContainer.GetChildren()) {
     if (child.IsA("Frame")) {
       child.Destroy();
     }
@@ -1814,7 +1859,7 @@ function updateEventsUI(): void {
     noEventsLabel.TextColor3 = new Color3(0.6, 0.6, 0.6);
     noEventsLabel.TextSize = 12;
     noEventsLabel.Font = Enum.Font.Gotham;
-    noEventsLabel.Parent = eventsList;
+    noEventsLabel.Parent = eventsListContainer;
   } else {
     const currentTime = os.time();
 
@@ -1828,7 +1873,7 @@ function updateEventsUI(): void {
       eventItem.Size = new UDim2(1, 0, 0, 50);
       eventItem.BackgroundColor3 = new Color3(0.3, 0.2, 0.4);
       eventItem.BorderSizePixel = 0;
-      eventItem.Parent = eventsList;
+      eventItem.Parent = eventsListContainer;
 
       const itemCorner = new Instance("UICorner");
       itemCorner.CornerRadius = new UDim(0, 6);
@@ -1873,6 +1918,14 @@ function updateEventsUI(): void {
     0,
     0,
     eventsLayout.AbsoluteContentSize.Y + 10
+  );
+
+  // Update container size to match content
+  eventsListContainer.Size = new UDim2(
+    1,
+    0,
+    0,
+    eventsLayout.AbsoluteContentSize.Y
   );
 }
 
@@ -1919,562 +1972,41 @@ EventUpdate.OnClientEvent.Connect(
   }
 );
 
-// Phase 9 - Settings UI
-const settingsFrame = new Instance("Frame");
-settingsFrame.Name = "SettingsFrame";
-settingsFrame.Size = new UDim2(0, 400, 0, 500);
-settingsFrame.Position = new UDim2(0.5, -200, 0.5, -250);
-settingsFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.15);
-settingsFrame.BorderSizePixel = 0;
-settingsFrame.Visible = false;
-settingsFrame.ZIndex = 10;
-settingsFrame.Parent = screenGui;
-
-const settingsCorner = new Instance("UICorner");
-settingsCorner.CornerRadius = new UDim(0, 8);
-settingsCorner.Parent = settingsFrame;
-
-const settingsTitle = new Instance("TextLabel");
-settingsTitle.Name = "Title";
-settingsTitle.Size = new UDim2(1, 0, 0, 50);
-settingsTitle.Position = new UDim2(0, 0, 0, 0);
-settingsTitle.BackgroundColor3 = new Color3(0.15, 0.15, 0.2);
-settingsTitle.BorderSizePixel = 0;
-settingsTitle.Text = "⚙️ Settings";
-settingsTitle.TextColor3 = new Color3(1, 1, 1);
-settingsTitle.TextSize = 24;
-settingsTitle.Font = Enum.Font.GothamBold;
-settingsTitle.Parent = settingsFrame;
-
-const settingsTitleCorner = new Instance("UICorner");
-settingsTitleCorner.CornerRadius = new UDim(0, 8);
-settingsTitleCorner.Parent = settingsTitle;
-
-const settingsCloseButton = new Instance("TextButton");
-settingsCloseButton.Name = "CloseButton";
-settingsCloseButton.Size = new UDim2(0, 40, 0, 40);
-settingsCloseButton.Position = new UDim2(1, -45, 0, 5);
-settingsCloseButton.BackgroundColor3 = new Color3(0.8, 0.2, 0.2);
-settingsCloseButton.BorderSizePixel = 0;
-settingsCloseButton.Text = "×";
-settingsCloseButton.TextColor3 = new Color3(1, 1, 1);
-settingsCloseButton.TextSize = 30;
-settingsCloseButton.Font = Enum.Font.GothamBold;
-settingsCloseButton.Parent = settingsFrame;
-
-const settingsCloseCorner = new Instance("UICorner");
-settingsCloseCorner.CornerRadius = new UDim(0, 6);
-settingsCloseCorner.Parent = settingsCloseButton;
-
-const settingsList = new Instance("ScrollingFrame");
-settingsList.Name = "SettingsList";
-settingsList.Size = new UDim2(1, -20, 1, -60);
-settingsList.Position = new UDim2(0, 10, 0, 55);
-settingsList.BackgroundTransparency = 1;
-settingsList.ScrollBarThickness = 4;
-settingsList.CanvasSize = new UDim2(0, 0, 0, 0);
-settingsList.Parent = settingsFrame;
-
-const settingsLayout = new Instance("UIListLayout");
-settingsLayout.Padding = new UDim(0, 10);
-settingsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
-settingsLayout.Parent = settingsList;
-
-// Create settings options
-function createSettingToggle(
-  name: string,
-  description: string,
-  currentValue: boolean,
-  onToggle: (value: boolean) => void
-): Frame {
-  const settingFrame = new Instance("Frame");
-  settingFrame.Name = name;
-  settingFrame.Size = new UDim2(1, 0, 0, 60);
-  settingFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.2);
-  settingFrame.BorderSizePixel = 0;
-  settingFrame.Parent = settingsList;
-
-  const settingCorner = new Instance("UICorner");
-  settingCorner.CornerRadius = new UDim(0, 6);
-  settingCorner.Parent = settingFrame;
-
-  const nameLabel = new Instance("TextLabel");
-  nameLabel.Size = new UDim2(1, -80, 0, 30);
-  nameLabel.Position = new UDim2(0, 10, 0, 5);
-  nameLabel.BackgroundTransparency = 1;
-  nameLabel.Text = name;
-  nameLabel.TextColor3 = new Color3(1, 1, 1);
-  nameLabel.TextSize = 16;
-  nameLabel.Font = Enum.Font.GothamBold;
-  nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
-  nameLabel.Parent = settingFrame;
-
-  const descLabel = new Instance("TextLabel");
-  descLabel.Size = new UDim2(1, -80, 0, 25);
-  descLabel.Position = new UDim2(0, 10, 0, 30);
-  descLabel.BackgroundTransparency = 1;
-  descLabel.Text = description;
-  descLabel.TextColor3 = new Color3(0.7, 0.7, 0.7);
-  descLabel.TextSize = 12;
-  descLabel.Font = Enum.Font.Gotham;
-  descLabel.TextXAlignment = Enum.TextXAlignment.Left;
-  descLabel.Parent = settingFrame;
-
-  const toggleButton = new Instance("TextButton");
-  toggleButton.Size = new UDim2(0, 60, 0, 30);
-  toggleButton.Position = new UDim2(1, -70, 0, 15);
-  toggleButton.BackgroundColor3 = currentValue
-    ? new Color3(0.2, 0.8, 0.2)
-    : new Color3(0.3, 0.3, 0.3);
-  toggleButton.BorderSizePixel = 0;
-  toggleButton.Text = currentValue ? "ON" : "OFF";
-  toggleButton.TextColor3 = new Color3(1, 1, 1);
-  toggleButton.TextSize = 14;
-  toggleButton.Font = Enum.Font.GothamBold;
-  toggleButton.Parent = settingFrame;
-
-  const toggleCorner = new Instance("UICorner");
-  toggleCorner.CornerRadius = new UDim(0, 6);
-  toggleCorner.Parent = toggleButton;
-
-  toggleButton.MouseButton1Click.Connect(() => {
-    const newValue = !currentValue;
-    toggleButton.BackgroundColor3 = newValue
-      ? new Color3(0.2, 0.8, 0.2)
-      : new Color3(0.3, 0.3, 0.3);
-    toggleButton.Text = newValue ? "ON" : "OFF";
-    onToggle(newValue);
-  });
-
-  return settingFrame;
-}
-
-function createSettingDropdown(
-  name: string,
-  description: string,
-  options: string[],
-  currentValue: string,
-  onSelect: (value: string) => void
-): Frame {
-  const settingFrame = new Instance("Frame");
-  settingFrame.Name = name;
-  settingFrame.Size = new UDim2(1, 0, 0, 60);
-  settingFrame.BackgroundColor3 = new Color3(0.15, 0.15, 0.2);
-  settingFrame.BorderSizePixel = 0;
-  settingFrame.Parent = settingsList;
-
-  const settingCorner = new Instance("UICorner");
-  settingCorner.CornerRadius = new UDim(0, 6);
-  settingCorner.Parent = settingFrame;
-
-  const nameLabel = new Instance("TextLabel");
-  nameLabel.Size = new UDim2(1, -120, 0, 30);
-  nameLabel.Position = new UDim2(0, 10, 0, 5);
-  nameLabel.BackgroundTransparency = 1;
-  nameLabel.Text = name;
-  nameLabel.TextColor3 = new Color3(1, 1, 1);
-  nameLabel.TextSize = 16;
-  nameLabel.Font = Enum.Font.GothamBold;
-  nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
-  nameLabel.Parent = settingFrame;
-
-  const descLabel = new Instance("TextLabel");
-  descLabel.Size = new UDim2(1, -120, 0, 25);
-  descLabel.Position = new UDim2(0, 10, 0, 30);
-  descLabel.BackgroundTransparency = 1;
-  descLabel.Text = description;
-  descLabel.TextColor3 = new Color3(0.7, 0.7, 0.7);
-  descLabel.TextSize = 12;
-  descLabel.Font = Enum.Font.Gotham;
-  descLabel.TextXAlignment = Enum.TextXAlignment.Left;
-  descLabel.Parent = settingFrame;
-
-  const dropdownButton = new Instance("TextButton");
-  dropdownButton.Size = new UDim2(0, 100, 0, 40);
-  dropdownButton.Position = new UDim2(1, -110, 0, 10);
-  dropdownButton.BackgroundColor3 = new Color3(0.2, 0.2, 0.3);
-  dropdownButton.BorderSizePixel = 0;
-  dropdownButton.Text = currentValue;
-  dropdownButton.TextColor3 = new Color3(1, 1, 1);
-  dropdownButton.TextSize = 14;
-  dropdownButton.Font = Enum.Font.Gotham;
-  dropdownButton.Parent = settingFrame;
-
-  const dropdownCorner = new Instance("UICorner");
-  dropdownCorner.CornerRadius = new UDim(0, 6);
-  dropdownCorner.Parent = dropdownButton;
-
-  let currentIndex = options.indexOf(currentValue);
-  if (currentIndex === -1) currentIndex = 0;
-
-  dropdownButton.MouseButton1Click.Connect(() => {
-    currentIndex = (currentIndex + 1) % options.size();
-    const newValue = options[currentIndex];
-    dropdownButton.Text = newValue;
-    onSelect(newValue);
-  });
-
-  return settingFrame;
-}
-
-function updateSettingsUI(): void {
-  // Clear existing settings
-  for (const child of settingsList.GetChildren()) {
-    if (child.IsA("Frame")) {
-      child.Destroy();
-    }
-  }
-
-  // Sound toggle
-  createSettingToggle(
-    "Sound Effects",
-    "Enable/disable game sound effects",
-    playerSettings.soundEnabled,
-    (value) => {
-      playerSettings.soundEnabled = value;
-      SettingsUpdateRequest.FireServer({ soundEnabled: value });
-    }
-  );
-
-  // Notifications toggle
-  createSettingToggle(
-    "Notifications",
-    "Show achievement and event notifications",
-    playerSettings.notificationsEnabled,
-    (value) => {
-      playerSettings.notificationsEnabled = value;
-      SettingsUpdateRequest.FireServer({ notificationsEnabled: value });
-    }
-  );
-
-  // Compact UI toggle
-  createSettingToggle(
-    "Compact UI",
-    "Use a more compact interface",
-    playerSettings.compactUI,
-    (value) => {
-      playerSettings.compactUI = value;
-      SettingsUpdateRequest.FireServer({ compactUI: value });
-      // TODO: Apply compact UI changes
-    }
-  );
-
-  // Number format dropdown
-  createSettingDropdown(
-    "Number Format",
-    "How numbers are displayed",
-    ["abbreviated", "standard", "scientific"],
-    playerSettings.numberFormat,
-    (value) => {
-      playerSettings.numberFormat = value as typeof playerSettings.numberFormat;
-      SettingsUpdateRequest.FireServer({ numberFormat: value });
-      // Update currency display
-      if (currencyLabel) {
-        currencyLabel.Text = `$${formatNumber(0)}`; // Will be updated by CurrencyUpdate
-      }
-    }
-  );
-
-  // Tooltips toggle
-  createSettingToggle(
-    "Show Tooltips",
-    "Display helpful tooltips",
-    playerSettings.showTooltips,
-    (value) => {
-      playerSettings.showTooltips = value;
-      SettingsUpdateRequest.FireServer({ showTooltips: value });
-    }
-  );
-
-  // Update canvas size
-  settingsList.CanvasSize = new UDim2(
-    0,
-    0,
-    0,
-    settingsLayout.AbsoluteContentSize.Y + 10
-  );
-}
-
-settingsCloseButton.MouseButton1Click.Connect(() => {
-  settingsFrame.Visible = false;
-});
-
-// Settings button (add to menu toggle area or retention frame)
-const settingsButton = new Instance("TextButton");
-settingsButton.Name = "SettingsButton";
-settingsButton.Size = new UDim2(0, 120, 0, 30);
-settingsButton.Position = new UDim2(0, 20, 0, 830); // Below events frame
-settingsButton.BackgroundColor3 = new Color3(0.2, 0.2, 0.3);
-settingsButton.BorderSizePixel = 0;
-settingsButton.Text = "⚙️ Settings";
-settingsButton.TextColor3 = new Color3(1, 1, 1);
-settingsButton.TextSize = 14;
-settingsButton.Font = Enum.Font.GothamBold;
-settingsButton.Visible = menusVisible;
-settingsButton.Parent = screenGui;
-
-const settingsButtonCorner = new Instance("UICorner");
-settingsButtonCorner.CornerRadius = new UDim(0, 6);
-settingsButtonCorner.Parent = settingsButton;
-
-settingsButton.MouseButton1Click.Connect(() => {
-  settingsFrame.Visible = true;
-  updateSettingsUI();
-});
-
-// Phase 9 - Friends UI
-const friendsFrame = new Instance("Frame");
-friendsFrame.Name = "FriendsFrame";
-friendsFrame.Size = new UDim2(0, 400, 0, 500);
-friendsFrame.Position = new UDim2(0.5, -200, 0.5, -250);
-friendsFrame.BackgroundColor3 = new Color3(0.1, 0.1, 0.15);
-friendsFrame.BorderSizePixel = 0;
-friendsFrame.Visible = false;
-friendsFrame.ZIndex = 10;
-friendsFrame.Parent = screenGui;
-
-const friendsCorner = new Instance("UICorner");
-friendsCorner.CornerRadius = new UDim(0, 8);
-friendsCorner.Parent = friendsFrame;
-
-const friendsTitle = new Instance("TextLabel");
-friendsTitle.Name = "Title";
-friendsTitle.Size = new UDim2(1, 0, 0, 50);
-friendsTitle.Position = new UDim2(0, 0, 0, 0);
-friendsTitle.BackgroundColor3 = new Color3(0.15, 0.15, 0.2);
-friendsTitle.BorderSizePixel = 0;
-friendsTitle.Text = "👥 Friends";
-friendsTitle.TextColor3 = new Color3(1, 1, 1);
-friendsTitle.TextSize = 24;
-friendsTitle.Font = Enum.Font.GothamBold;
-friendsTitle.Parent = friendsFrame;
-
-const friendsTitleCorner = new Instance("UICorner");
-friendsTitleCorner.CornerRadius = new UDim(0, 8);
-friendsTitleCorner.Parent = friendsTitle;
-
-const friendsCloseButton = new Instance("TextButton");
-friendsCloseButton.Name = "CloseButton";
-friendsCloseButton.Size = new UDim2(0, 40, 0, 40);
-friendsCloseButton.Position = new UDim2(1, -45, 0, 5);
-friendsCloseButton.BackgroundColor3 = new Color3(0.8, 0.2, 0.2);
-friendsCloseButton.BorderSizePixel = 0;
-friendsCloseButton.Text = "×";
-friendsCloseButton.TextColor3 = new Color3(1, 1, 1);
-friendsCloseButton.TextSize = 30;
-friendsCloseButton.Font = Enum.Font.GothamBold;
-friendsCloseButton.Parent = friendsFrame;
-
-const friendsCloseCorner = new Instance("UICorner");
-friendsCloseCorner.CornerRadius = new UDim(0, 6);
-friendsCloseCorner.Parent = friendsCloseButton;
-
-const friendsList = new Instance("ScrollingFrame");
-friendsList.Name = "FriendsList";
-friendsList.Size = new UDim2(1, -20, 1, -60);
-friendsList.Position = new UDim2(0, 10, 0, 55);
-friendsList.BackgroundTransparency = 1;
-friendsList.ScrollBarThickness = 4;
-friendsList.CanvasSize = new UDim2(0, 0, 0, 0);
-friendsList.Parent = friendsFrame;
-
-const friendsLayout = new Instance("UIListLayout");
-friendsLayout.Padding = new UDim(0, 5);
-friendsLayout.SortOrder = Enum.SortOrder.LayoutOrder;
-friendsLayout.Parent = friendsList;
-
-function updateFriendsUI(
-  friendsData: Array<{
-    userId: number;
-    username: string;
-    currency: number;
-    rebirthCount: number;
-    isOnline: boolean;
-  }>
-): void {
-  // Clear existing friends
-  for (const child of friendsList.GetChildren()) {
-    if (child.IsA("Frame")) {
-      child.Destroy();
-    }
-  }
-
-  if (friendsData.size() === 0) {
-    const noFriendsLabel = new Instance("TextLabel");
-    noFriendsLabel.Size = new UDim2(1, 0, 0, 50);
-    noFriendsLabel.BackgroundTransparency = 1;
-    noFriendsLabel.Text = "No friends found.\nAdd friends through Roblox!";
-    noFriendsLabel.TextColor3 = new Color3(0.6, 0.6, 0.6);
-    noFriendsLabel.TextSize = 14;
-    noFriendsLabel.Font = Enum.Font.Gotham;
-    noFriendsLabel.TextWrapped = true;
-    noFriendsLabel.Parent = friendsList;
-  } else {
-    for (const friend of friendsData) {
-      const friendItem = new Instance("Frame");
-      friendItem.Name = `Friend_${friend.userId}`;
-      friendItem.Size = new UDim2(1, 0, 0, 70);
-      friendItem.BackgroundColor3 = friend.isOnline
-        ? new Color3(0.2, 0.3, 0.2)
-        : new Color3(0.15, 0.15, 0.2);
-      friendItem.BorderSizePixel = 0;
-      friendItem.Parent = friendsList;
-
-      const itemCorner = new Instance("UICorner");
-      itemCorner.CornerRadius = new UDim(0, 6);
-      itemCorner.Parent = friendItem;
-
-      const statusIndicator = new Instance("Frame");
-      statusIndicator.Size = new UDim2(0, 8, 0, 8);
-      statusIndicator.Position = new UDim2(0, 5, 0, 5);
-      statusIndicator.BackgroundColor3 = friend.isOnline
-        ? new Color3(0, 1, 0)
-        : new Color3(0.5, 0.5, 0.5);
-      statusIndicator.BorderSizePixel = 0;
-      statusIndicator.Parent = friendItem;
-
-      const statusCorner = new Instance("UICorner");
-      statusCorner.CornerRadius = new UDim(0, 4);
-      statusCorner.Parent = statusIndicator;
-
-      const nameLabel = new Instance("TextLabel");
-      nameLabel.Size = new UDim2(1, -10, 0, 25);
-      nameLabel.Position = new UDim2(0, 15, 0, 5);
-      nameLabel.BackgroundTransparency = 1;
-      nameLabel.Text = friend.username + (friend.isOnline ? " (Online)" : "");
-      nameLabel.TextColor3 = new Color3(1, 1, 1);
-      nameLabel.TextSize = 16;
-      nameLabel.Font = Enum.Font.GothamBold;
-      nameLabel.TextXAlignment = Enum.TextXAlignment.Left;
-      nameLabel.Parent = friendItem;
-
-      const currencyLabel = new Instance("TextLabel");
-      currencyLabel.Size = new UDim2(0.5, -5, 0, 20);
-      currencyLabel.Position = new UDim2(0, 15, 0, 30);
-      currencyLabel.BackgroundTransparency = 1;
-      currencyLabel.Text = `Currency: $${formatNumber(friend.currency)}`;
-      currencyLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
-      currencyLabel.TextSize = 12;
-      currencyLabel.Font = Enum.Font.Gotham;
-      currencyLabel.TextXAlignment = Enum.TextXAlignment.Left;
-      currencyLabel.Parent = friendItem;
-
-      const rebirthLabel = new Instance("TextLabel");
-      rebirthLabel.Size = new UDim2(0.5, -5, 0, 20);
-      rebirthLabel.Position = new UDim2(0.5, 0, 0, 30);
-      rebirthLabel.BackgroundTransparency = 1;
-      rebirthLabel.Text = `Rebirths: ${friend.rebirthCount}`;
-      rebirthLabel.TextColor3 = new Color3(0.8, 0.8, 0.8);
-      rebirthLabel.TextSize = 12;
-      rebirthLabel.Font = Enum.Font.Gotham;
-      rebirthLabel.TextXAlignment = Enum.TextXAlignment.Left;
-      rebirthLabel.Parent = friendItem;
-    }
-  }
-
-  friendsList.CanvasSize = new UDim2(
-    0,
-    0,
-    0,
-    friendsLayout.AbsoluteContentSize.Y + 10
-  );
-}
-
-friendsCloseButton.MouseButton1Click.Connect(() => {
-  friendsFrame.Visible = false;
-});
-
-// Friends button
-const friendsButton = new Instance("TextButton");
-friendsButton.Name = "FriendsButton";
-friendsButton.Size = new UDim2(0, 120, 0, 30);
-friendsButton.Position = new UDim2(0, 150, 0, 830); // Next to settings button
-friendsButton.BackgroundColor3 = new Color3(0.2, 0.2, 0.3);
-friendsButton.BorderSizePixel = 0;
-friendsButton.Text = "👥 Friends";
-friendsButton.TextColor3 = new Color3(1, 1, 1);
-friendsButton.TextSize = 14;
-friendsButton.Font = Enum.Font.GothamBold;
-friendsButton.Visible = menusVisible;
-friendsButton.Parent = screenGui;
-
-const friendsButtonCorner = new Instance("UICorner");
-friendsButtonCorner.CornerRadius = new UDim(0, 6);
-friendsButtonCorner.Parent = friendsButton;
-
-friendsButton.MouseButton1Click.Connect(() => {
-  friendsFrame.Visible = true;
-  FriendsRequest.FireServer();
-});
-
-// Listen for settings update response
-SettingsUpdateResponse.OnClientEvent.Connect((settings) => {
-  playerSettings = settings;
-  updateSettingsUI();
-});
-
-// Listen for friends response
-FriendsResponse.OnClientEvent.Connect((friendsData) => {
-  if (friendsFrame.Visible) {
-    updateFriendsUI(friendsData);
-  }
-});
+// Settings and Friends UI removed - buttons don't work
 
 // Menu toggle button handler (will be connected after all frames are created)
 // Note: rebirthFrame doesn't exist as a separate frame - rebirth button is directly on screenGui
 
-print("[Client] Currency UI initialized");
+// Modal buttons removed - everything is on screen now
 
-// Phase 9 - Settings & Social
-let playerSettings: {
-  soundEnabled: boolean;
-  notificationsEnabled: boolean;
-  compactUI: boolean;
-  numberFormat: "standard" | "scientific" | "abbreviated";
-  showTooltips: boolean;
-} = {
-  soundEnabled: true,
-  notificationsEnabled: true,
-  compactUI: false,
-  numberFormat: "abbreviated",
-  showTooltips: true,
-};
+// No longer needed - using simple Frame instead of ScrollingFrame
+
+// No longer needed - using simple Frame instead of ScrollingFrame
+
+// Ensure screenGui is visible
+screenGui.Enabled = true;
+
+print("[Client] Currency UI initialized");
+print(`[Client] ScreenGui enabled: ${screenGui.Enabled}`);
+print(`[Client] ScreenGui parent: ${screenGui.Parent?.Name}`);
+print(`[Client] ScreenGui children count: ${screenGui.GetChildren().size()}`);
+print(`[Client] Currency frame visible: ${currencyFrame.Visible}`);
+print(`[Client] Currency frame parent: ${currencyFrame.Parent?.Name}`);
+print(`[Client] Menu toggle visible: ${menuToggleButton.Visible}`);
+print(`[Client] Menu toggle parent: ${menuToggleButton.Parent?.Name}`);
 
 /**
- * Format large numbers based on user settings
+ * Format large numbers (always abbreviated format)
  */
 function formatNumber(num: number): string {
-  if (playerSettings.numberFormat === "scientific") {
-    if (num >= 1000000) {
-      const value = math.floor((num / 1000000) * 100) / 100;
-      return `${value}e+6`;
-    } else if (num >= 1000) {
-      const value = math.floor((num / 1000) * 100) / 100;
-      return `${value}e+3`;
-    }
-    return tostring(math.floor(num));
-  } else if (playerSettings.numberFormat === "standard") {
-    // Standard format with commas
-    const numStr = tostring(math.floor(num));
-    let result = "";
-    for (let i = 0; i < numStr.size(); i++) {
-      if (i > 0 && (numStr.size() - i) % 3 === 0) {
-        result += ",";
-      }
-      result += string.sub(numStr, i + 1, i + 1); // Luau uses 1-based indexing
-    }
-    return result;
-  } else {
-    // Abbreviated (default)
-    if (num >= 1000000000000) {
-      return `${math.floor((num / 1000000000000) * 100) / 100}T`;
-    } else if (num >= 1000000000) {
-      return `${math.floor((num / 1000000000) * 100) / 100}B`;
-    } else if (num >= 1000000) {
-      return `${math.floor((num / 1000000) * 100) / 100}M`;
-    } else if (num >= 1000) {
-      return `${math.floor((num / 1000) * 100) / 100}K`;
-    }
-    return tostring(math.floor(num));
+  if (num >= 1000000000000) {
+    return `${math.floor((num / 1000000000000) * 100) / 100}T`;
+  } else if (num >= 1000000000) {
+    return `${math.floor((num / 1000000000) * 100) / 100}B`;
+  } else if (num >= 1000000) {
+    return `${math.floor((num / 1000000) * 100) / 100}M`;
+  } else if (num >= 1000) {
+    return `${math.floor((num / 1000) * 100) / 100}K`;
   }
+  return tostring(math.floor(num));
 }
