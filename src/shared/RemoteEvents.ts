@@ -28,5 +28,30 @@ const RebirthCountUpdate = new Instance("RemoteEvent");
 RebirthCountUpdate.Name = "RebirthCountUpdate";
 RebirthCountUpdate.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate };
+// Upgrade purchase request (client -> server)
+const UpgradePurchaseRequest = new Instance("RemoteEvent");
+UpgradePurchaseRequest.Name = "UpgradePurchaseRequest";
+UpgradePurchaseRequest.Parent = remoteFolder;
+
+// Upgrade purchase response (server -> client)
+const UpgradePurchaseResponse = new Instance("RemoteEvent");
+UpgradePurchaseResponse.Name = "UpgradePurchaseResponse";
+UpgradePurchaseResponse.Parent = remoteFolder;
+
+// Zone unlock request (client -> server)
+const ZoneUnlockRequest = new Instance("RemoteEvent");
+ZoneUnlockRequest.Name = "ZoneUnlockRequest";
+ZoneUnlockRequest.Parent = remoteFolder;
+
+// Zone unlock response (server -> client)
+const ZoneUnlockResponse = new Instance("RemoteEvent");
+ZoneUnlockResponse.Name = "ZoneUnlockResponse";
+ZoneUnlockResponse.Parent = remoteFolder;
+
+// Player data update (server -> client) - sends all upgrade/zone data
+const PlayerDataUpdate = new Instance("RemoteEvent");
+PlayerDataUpdate.Name = "PlayerDataUpdate";
+PlayerDataUpdate.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate };
 

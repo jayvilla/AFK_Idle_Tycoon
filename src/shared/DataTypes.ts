@@ -6,6 +6,9 @@ export interface PlayerSaveData {
 	currency: number;
 	lastSaveTime: number; // Unix timestamp
 	rebirthCount: number; // For Phase 3
+	upgradeLevels: { [upgradeId: string]: number }; // Upgrade ID -> Level
+	unlockedZones: string[]; // Array of unlocked zone IDs
+	hasVIP: boolean; // VIP gamepass status (Phase 5)
 }
 
 /**
@@ -16,6 +19,9 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	currency: 0,
 	lastSaveTime: 0,
 	rebirthCount: 0,
+	upgradeLevels: {},
+	unlockedZones: ["zone_1"], // Start with zone_1 unlocked
+	hasVIP: false,
 };
 
 /**

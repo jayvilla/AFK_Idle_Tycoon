@@ -1,6 +1,7 @@
 import { Players, DataStoreService } from "@rbxts/services";
-import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate } from "../shared/RemoteEvents";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
+import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
 
 print("AFK Tycoon TypeScript server running");
 
@@ -89,10 +90,24 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 				currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
 				lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
 				rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+				upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
+				unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+				hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
 			};
 		}
 		
-		return typedData as PlayerSaveData;
+		// Ensure all fields exist even if version is current
+		const migrated: PlayerSaveData = {
+			version: currentVersion,
+			currency: typedData.currency ?? DEFAULT_PLAYER_DATA.currency,
+			lastSaveTime: typedData.lastSaveTime ?? DEFAULT_PLAYER_DATA.lastSaveTime,
+			rebirthCount: typedData.rebirthCount ?? DEFAULT_PLAYER_DATA.rebirthCount,
+			upgradeLevels: typedData.upgradeLevels ?? DEFAULT_PLAYER_DATA.upgradeLevels,
+			unlockedZones: typedData.unlockedZones ?? DEFAULT_PLAYER_DATA.unlockedZones,
+			hasVIP: typedData.hasVIP ?? DEFAULT_PLAYER_DATA.hasVIP,
+		};
+		
+		return migrated;
 	}
 	
 	// Invalid data, return defaults
@@ -161,6 +176,61 @@ function hasPendingSave(userId: number): boolean {
 }
 
 /**
+ * Calculate total upgrade income multiplier
+ */
+function getTotalUpgradeMultiplier(playerData: PlayerData): number {
+	let totalMultiplier = 0;
+	
+	for (const [upgradeId, level] of pairs(playerData.saveData.upgradeLevels)) {
+		if (typeIs(upgradeId, "string")) {
+			const upgrade = getUpgrade(upgradeId);
+			if (upgrade && typeIs(level, "number") && level > 0) {
+				totalMultiplier += upgrade.incomeMultiplier * level;
+			}
+		}
+	}
+	
+	return 1 + totalMultiplier; // Additive, then convert to multiplier
+}
+
+/**
+ * Get current zone income multiplier
+ */
+function getCurrentZoneMultiplier(playerData: PlayerData): number {
+	// Get the highest unlocked zone multiplier
+	let maxMultiplier = 1.0;
+	
+	for (const zoneId of playerData.saveData.unlockedZones) {
+		const zone = getZone(zoneId);
+		if (zone) {
+			// Check VIP requirement
+			if (zone.isVIP && !playerData.saveData.hasVIP) {
+				continue; // Skip VIP zones if player doesn't have VIP
+			}
+			maxMultiplier = math.max(maxMultiplier, zone.incomeMultiplier);
+		}
+	}
+	
+	return maxMultiplier;
+}
+
+/**
+ * Send player data update to client
+ */
+function sendPlayerDataUpdate(player: Player): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	PlayerDataUpdate.FireClient(player, {
+		upgradeLevels: playerData.saveData.upgradeLevels,
+		unlockedZones: playerData.saveData.unlockedZones,
+		hasVIP: playerData.saveData.hasVIP,
+	});
+}
+
+/**
  * Calculate offline earnings based on time difference
  */
 function calculateOfflineEarnings(lastSaveTime: number): number {
@@ -209,9 +279,10 @@ async function initializePlayer(player: Player): Promise<void> {
 		
 		playerDataMap.set(player, playerData);
 		
-		// Send initial currency and rebirth count to client
+		// Send initial currency, rebirth count, and player data to client
 		CurrencyUpdate.FireClient(player, saveData.currency);
 		RebirthCountUpdate.FireClient(player, saveData.rebirthCount);
+		sendPlayerDataUpdate(player);
 		
 		if (offlineEarnings > 0) {
 			print(`[CurrencyManager] Loaded player ${player.Name}: ${saveData.currency} currency (${offlineEarnings} from offline), ${saveData.rebirthCount} rebirths`);
@@ -228,6 +299,9 @@ async function initializePlayer(player: Player): Promise<void> {
 				currency: 0,
 				lastSaveTime: 0,
 				rebirthCount: 0,
+				upgradeLevels: {},
+				unlockedZones: ["zone_1"],
+				hasVIP: false,
 			},
 			sessionStartTime: os.time(),
 			lastSaveTime: os.time(),
@@ -302,13 +376,123 @@ function processAFKIncome(): void {
 			continue;
 		}
 
-		// Calculate income with rebirth multiplier
+		// Calculate income with all multipliers
 		const rebirthMultiplier = getRebirthIncomeMultiplier(playerData.saveData.rebirthCount);
-		const income = BASE_INCOME_PER_SECOND * rebirthMultiplier;
+		const upgradeMultiplier = getTotalUpgradeMultiplier(playerData);
+		const zoneMultiplier = getCurrentZoneMultiplier(playerData);
+		
+		const totalMultiplier = rebirthMultiplier * upgradeMultiplier * zoneMultiplier;
+		const income = BASE_INCOME_PER_SECOND * totalMultiplier;
 
 		// Add currency
 		addCurrency(player, income);
 	}
+}
+
+/**
+ * Handle upgrade purchase request
+ */
+function handleUpgradePurchase(player: Player, upgradeId: string): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Upgrade] Player ${player.Name} has no data`);
+		UpgradePurchaseResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+
+	const upgrade = getUpgrade(upgradeId);
+	if (!upgrade) {
+		warn(`[Upgrade] Invalid upgrade ID: ${upgradeId}`);
+		UpgradePurchaseResponse.FireClient(player, false, "Invalid upgrade");
+		return;
+	}
+
+	// Check zone requirement
+	if (upgrade.zoneRequired) {
+		if (!playerData.saveData.unlockedZones.includes(upgrade.zoneRequired)) {
+			UpgradePurchaseResponse.FireClient(player, false, `Requires ${getZone(upgrade.zoneRequired)?.name ?? upgrade.zoneRequired} zone`);
+			return;
+		}
+	}
+
+	// Get current level
+	const currentLevel = playerData.saveData.upgradeLevels[upgradeId] ?? 0;
+
+	// Check max level
+	if (upgrade.maxLevel !== -1 && currentLevel >= upgrade.maxLevel) {
+		UpgradePurchaseResponse.FireClient(player, false, "Upgrade is at max level");
+		return;
+	}
+
+	// Calculate cost for next level
+	const cost = getUpgradeCost(upgrade, currentLevel);
+
+	// Check if player has enough currency
+	if (playerData.saveData.currency < cost) {
+		const shortfall = cost - playerData.saveData.currency;
+		UpgradePurchaseResponse.FireClient(player, false, `Need ${shortfall} more currency`);
+		return;
+	}
+
+	// Purchase upgrade
+	playerData.saveData.currency -= cost;
+	playerData.saveData.upgradeLevels[upgradeId] = currentLevel + 1;
+
+	// Update client
+	CurrencyUpdate.FireClient(player, playerData.saveData.currency);
+	sendPlayerDataUpdate(player);
+
+	UpgradePurchaseResponse.FireClient(player, true, `${upgrade.name} upgraded to level ${currentLevel + 1}`);
+	print(`[Upgrade] ${player.Name} purchased ${upgrade.name} level ${currentLevel + 1} for ${cost} currency`);
+}
+
+/**
+ * Handle zone unlock request
+ */
+function handleZoneUnlock(player: Player, zoneId: string): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		warn(`[Zone] Player ${player.Name} has no data`);
+		ZoneUnlockResponse.FireClient(player, false, "No player data found");
+		return;
+	}
+
+	const zone = getZone(zoneId);
+	if (!zone) {
+		warn(`[Zone] Invalid zone ID: ${zoneId}`);
+		ZoneUnlockResponse.FireClient(player, false, "Invalid zone");
+		return;
+	}
+
+	// Check if already unlocked
+	if (playerData.saveData.unlockedZones.includes(zoneId)) {
+		ZoneUnlockResponse.FireClient(player, false, "Zone already unlocked");
+		return;
+	}
+
+	// Check VIP requirement
+	if (zone.isVIP && !playerData.saveData.hasVIP) {
+		ZoneUnlockResponse.FireClient(player, false, "VIP zone requires VIP gamepass");
+		return;
+	}
+
+	// Check cost
+	if (playerData.saveData.currency < zone.unlockCost) {
+		const shortfall = zone.unlockCost - playerData.saveData.currency;
+		ZoneUnlockResponse.FireClient(player, false, `Need ${shortfall} more currency`);
+		return;
+	}
+
+	// Unlock zone
+	playerData.saveData.currency -= zone.unlockCost;
+	playerData.saveData.unlockedZones.push(zoneId);
+
+	// Update client
+	CurrencyUpdate.FireClient(player, playerData.saveData.currency);
+	sendPlayerDataUpdate(player);
+
+	ZoneUnlockResponse.FireClient(player, true, `${zone.name} unlocked!`);
+	print(`[Zone] ${player.Name} unlocked ${zone.name} for ${zone.unlockCost} currency`);
 }
 
 /**
@@ -411,6 +595,22 @@ startAutoSaveLoop();
 // Handle rebirth requests
 RebirthRequest.OnServerEvent.Connect((player) => {
 	handleRebirth(player);
+});
+
+// Handle upgrade purchase requests
+UpgradePurchaseRequest.OnServerEvent.Connect((player, ...args) => {
+	const upgradeId = args[0] as string;
+	if (typeIs(upgradeId, "string")) {
+		handleUpgradePurchase(player, upgradeId);
+	}
+});
+
+// Handle zone unlock requests
+ZoneUnlockRequest.OnServerEvent.Connect((player, ...args) => {
+	const zoneId = args[0] as string;
+	if (typeIs(zoneId, "string")) {
+		handleZoneUnlock(player, zoneId);
+	}
 });
 
 print("[CurrencyManager] Service initialized");
