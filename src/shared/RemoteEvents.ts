@@ -109,5 +109,25 @@ const AdminActivateEvent = new Instance("RemoteEvent");
 AdminActivateEvent.Name = "AdminActivateEvent";
 AdminActivateEvent.Parent = remoteFolder;
 
-export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent };
+// Settings update (client -> server)
+const SettingsUpdateRequest = new Instance("RemoteEvent");
+SettingsUpdateRequest.Name = "SettingsUpdateRequest";
+SettingsUpdateRequest.Parent = remoteFolder;
+
+// Settings update response (server -> client)
+const SettingsUpdateResponse = new Instance("RemoteEvent");
+SettingsUpdateResponse.Name = "SettingsUpdateResponse";
+SettingsUpdateResponse.Parent = remoteFolder;
+
+// Friends request (client -> server) - get friends' progress
+const FriendsRequest = new Instance("RemoteEvent");
+FriendsRequest.Name = "FriendsRequest";
+FriendsRequest.Parent = remoteFolder;
+
+// Friends response (server -> client)
+const FriendsResponse = new Instance("RemoteEvent");
+FriendsResponse.Name = "FriendsResponse";
+FriendsResponse.Parent = remoteFolder;
+
+export { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse };
 

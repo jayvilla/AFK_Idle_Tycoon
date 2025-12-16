@@ -23,6 +23,15 @@ export interface PlayerSaveData {
 	dailyRewardsClaimed: number; // Total daily rewards claimed
 	// Phase 8 - Events
 	eventParticipation: { [eventId: string]: number }; // Event ID -> participation count
+	// Phase 9 - Settings & Social
+	settings: {
+		soundEnabled: boolean;
+		notificationsEnabled: boolean;
+		compactUI: boolean;
+		numberFormat: "standard" | "scientific" | "abbreviated"; // Number display format
+		showTooltips: boolean;
+	};
+	friends: number[]; // Array of friend user IDs
 }
 
 /**
@@ -47,6 +56,14 @@ export const DEFAULT_PLAYER_DATA: PlayerSaveData = {
 	unlockedAchievements: [],
 	dailyRewardsClaimed: 0,
 	eventParticipation: {},
+	settings: {
+		soundEnabled: true,
+		notificationsEnabled: true,
+		compactUI: false,
+		numberFormat: "abbreviated",
+		showTooltips: true,
+	},
+	friends: [],
 };
 
 /**

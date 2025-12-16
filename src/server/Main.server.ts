@@ -1,5 +1,5 @@
 import { Players, DataStoreService, MarketplaceService } from "@rbxts/services";
-import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent } from "../shared/RemoteEvents";
+import { CurrencyUpdate, RebirthRequest, RebirthResponse, RebirthCountUpdate, UpgradePurchaseRequest, UpgradePurchaseResponse, ZoneUnlockRequest, ZoneUnlockResponse, PlayerDataUpdate, AFKRewardClaimRequest, AFKRewardClaimResponse, DailyLoginClaimRequest, DailyLoginClaimResponse, LeaderboardRequest, LeaderboardResponse, AchievementUnlocked, AchievementsUpdate, AchievementProgressUpdate, EventUpdate, AdminActivateEvent, SettingsUpdateRequest, SettingsUpdateResponse, FriendsRequest, FriendsResponse } from "../shared/RemoteEvents";
 import { PlayerSaveData, DEFAULT_PLAYER_DATA, DATA_VERSION, getRebirthCost, getRebirthIncomeMultiplier } from "../shared/DataTypes";
 import { UPGRADES, ZONES, getUpgrade, getZone, getUpgradeCost } from "../shared/UpgradeConfig";
 import { GAMEPASS_IDS, PRODUCT_IDS, BOOST_DURATION_1HOUR, BOOST_MULTIPLIER_2X, BOOST_MULTIPLIER_5X } from "../shared/MonetizationConfig";
@@ -113,6 +113,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 			unlockedAchievements: typedData.unlockedAchievements ?? DEFAULT_PLAYER_DATA.unlockedAchievements,
 			dailyRewardsClaimed: typedData.dailyRewardsClaimed ?? DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
 			eventParticipation: typedData.eventParticipation ?? DEFAULT_PLAYER_DATA.eventParticipation,
+			settings: typedData.settings ?? DEFAULT_PLAYER_DATA.settings,
+			friends: typedData.friends ?? DEFAULT_PLAYER_DATA.friends,
 		};
 	}
 	
@@ -136,6 +138,8 @@ function migrateData(data: unknown, currentVersion: number): PlayerSaveData {
 		unlockedAchievements: typedData.unlockedAchievements ?? DEFAULT_PLAYER_DATA.unlockedAchievements,
 		dailyRewardsClaimed: typedData.dailyRewardsClaimed ?? DEFAULT_PLAYER_DATA.dailyRewardsClaimed,
 		eventParticipation: typedData.eventParticipation ?? DEFAULT_PLAYER_DATA.eventParticipation,
+		settings: typedData.settings ?? DEFAULT_PLAYER_DATA.settings,
+		friends: typedData.friends ?? DEFAULT_PLAYER_DATA.friends,
 	};
 		
 	return migrated;
@@ -393,6 +397,9 @@ async function initializePlayer(player: Player): Promise<void> {
 		}));
 		EventUpdate.FireClient(player, eventData);
 		
+		// Send settings to client
+		SettingsUpdateResponse.FireClient(player, saveData.settings);
+		
 		// Update leaderboard DataStore on join
 		task.spawn(async () => {
 			await updateLeaderboardDataStore(
@@ -437,6 +444,8 @@ async function initializePlayer(player: Player): Promise<void> {
 				unlockedAchievements: [],
 				dailyRewardsClaimed: 0,
 				eventParticipation: {},
+				settings: DEFAULT_PLAYER_DATA.settings,
+				friends: [],
 			},
 			sessionStartTime: currentTime,
 			lastSaveTime: currentTime,
@@ -1657,6 +1666,121 @@ AdminActivateEvent.OnServerEvent.Connect((player, ...args) => {
 	
 	activateEvent(eventId, durationMinutes);
 	print(`[Events] ${player.Name} activated event: ${eventId} for ${durationMinutes} minutes`);
+});
+
+/**
+ * Handle settings update request
+ */
+function handleSettingsUpdate(player: Player, newSettings: Partial<PlayerSaveData["settings"]>): void {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	// Update settings
+	playerData.saveData.settings = {
+		...playerData.saveData.settings,
+		...newSettings,
+	};
+	
+	// Send confirmation back to client
+	SettingsUpdateResponse.FireClient(player, playerData.saveData.settings);
+	
+	// Auto-save settings
+	task.spawn(async () => {
+		await savePlayer(player);
+	});
+	
+	print(`[Settings] Updated settings for ${player.Name}`);
+}
+
+/**
+ * Handle friends request - get friends' progress
+ */
+async function handleFriendsRequest(player: Player): Promise<void> {
+	const playerData = playerDataMap.get(player);
+	if (!playerData) {
+		return;
+	}
+	
+	// Get friends list from Roblox Friends API
+	const friendsList: Array<{ userId: number; username: string; currency: number; rebirthCount: number; isOnline: boolean }> = [];
+	
+	// Use Roblox's FriendsService to get friends
+	// Note: In production, you might want to use FriendsService or cache this data
+	// For now, we'll check in-game players who are friends
+	const friends = playerData.saveData.friends;
+	
+	for (const friendUserId of friends) {
+		// Check if friend is in-game
+		const friendPlayer = Players.GetPlayerByUserId(friendUserId);
+		if (friendPlayer) {
+			const friendData = playerDataMap.get(friendPlayer);
+			if (friendData) {
+				// Try to get username
+				let username = "Unknown";
+				const [success, name] = pcall(() => Players.GetNameFromUserIdAsync(friendUserId));
+				if (success && name) {
+					username = name;
+				} else {
+					username = friendPlayer.Name;
+				}
+				
+				friendsList.push({
+					userId: friendUserId,
+					username: username,
+					currency: friendData.saveData.currency,
+					rebirthCount: friendData.saveData.rebirthCount,
+					isOnline: true,
+				});
+			}
+		} else {
+			// Friend is offline - try to get their data from DataStore
+			task.spawn(async () => {
+				try {
+					const friendData = await loadPlayerData(friendUserId);
+					if (friendData) {
+						let username = "Unknown";
+						const [success, name] = pcall(() => Players.GetNameFromUserIdAsync(friendUserId));
+						if (success && name) {
+							username = name;
+						}
+						
+						friendsList.push({
+							userId: friendUserId,
+							username: username,
+							currency: friendData.currency,
+							rebirthCount: friendData.rebirthCount,
+							isOnline: false,
+						});
+						
+						// Send updated list
+						FriendsResponse.FireClient(player, friendsList);
+					}
+				} catch (error) {
+					warn(`[Friends] Failed to load data for friend ${friendUserId}: ${error}`);
+				}
+			});
+		}
+	}
+	
+	// Send initial response with online friends
+	FriendsResponse.FireClient(player, friendsList);
+}
+
+// Handle settings update requests
+SettingsUpdateRequest.OnServerEvent.Connect((player, ...args) => {
+	const newSettings = args[0] as Partial<PlayerSaveData["settings"]>;
+	if (typeIs(newSettings, "table")) {
+		handleSettingsUpdate(player, newSettings);
+	}
+});
+
+// Handle friends requests
+FriendsRequest.OnServerEvent.Connect((player) => {
+	task.spawn(async () => {
+		await handleFriendsRequest(player);
+	});
 });
 
 print("[CurrencyManager] Service initialized");
