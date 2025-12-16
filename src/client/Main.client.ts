@@ -167,7 +167,7 @@ CurrencyUpdate.OnClientEvent.Connect((newCurrency: number) => {
 // Create rebirth button
 const rebirthButton = new Instance("TextButton");
 rebirthButton.Name = "RebirthButton";
-rebirthButton.Size = new UDim2(0, 200, 0, 50);
+rebirthButton.Size = new UDim2(0, 200, 0, 55); // Slightly taller to fit cost label
 rebirthButton.Position = new UDim2(0, 20, 0, 90);
 rebirthButton.BackgroundColor3 = new Color3(0.2, 0.6, 0.2);
 rebirthButton.BorderSizePixel = 0;
@@ -182,15 +182,15 @@ const buttonCorner = new Instance("UICorner");
 buttonCorner.CornerRadius = new UDim(0, 8);
 buttonCorner.Parent = rebirthButton;
 
-// Rebirth cost label
+// Rebirth cost label (positioned below button text, inside button)
 const rebirthCostLabel = new Instance("TextLabel");
 rebirthCostLabel.Name = "RebirthCostLabel";
-rebirthCostLabel.Size = new UDim2(1, 0, 0, 20);
-rebirthCostLabel.Position = new UDim2(0, 0, 1, 5);
+rebirthCostLabel.Size = new UDim2(1, 0, 0, 18);
+rebirthCostLabel.Position = new UDim2(0, 0, 0, 30); // Below the "Rebirth" text
 rebirthCostLabel.BackgroundTransparency = 1;
 rebirthCostLabel.Text = "Cost: $0";
 rebirthCostLabel.TextColor3 = new Color3(1, 1, 0.5);
-rebirthCostLabel.TextSize = 14;
+rebirthCostLabel.TextSize = 12;
 rebirthCostLabel.Font = Enum.Font.Gotham;
 rebirthCostLabel.Parent = rebirthButton;
 
@@ -213,11 +213,15 @@ function updateRebirthButton(): void {
   rebirthCostLabel.Text = `Cost: $${formatNumber(cost)}`;
 
   if (currentCurrency >= cost) {
+    // Can afford - green and enabled
     rebirthButton.BackgroundColor3 = new Color3(0.2, 0.8, 0.2);
     rebirthButton.Text = "REBIRTH";
+    rebirthButton.Active = true;
   } else {
+    // Can't afford - gray and disabled
     rebirthButton.BackgroundColor3 = new Color3(0.4, 0.4, 0.4);
     rebirthButton.Text = "Rebirth";
+    rebirthButton.Active = true; // Still clickable, but visually grayed out
   }
 }
 
@@ -799,7 +803,12 @@ doubleCashButton.Text = "2× Cash";
 doubleCashButton.TextColor3 = new Color3(1, 1, 1);
 doubleCashButton.TextSize = 12;
 doubleCashButton.Font = Enum.Font.Gotham;
+doubleCashButton.Active = true; // Ensure button is clickable
+doubleCashButton.Visible = true; // Ensure button is visible
 doubleCashButton.Parent = gamepassList;
+print(
+  `[Client] DoubleCash button created. Parent: ${doubleCashButton.Parent?.Name}, Visible: ${doubleCashButton.Visible}, Active: ${doubleCashButton.Active}`
+);
 
 const autoCollectButton = new Instance("TextButton");
 autoCollectButton.Name = "AutoCollect";
@@ -810,7 +819,9 @@ autoCollectButton.Text = "Auto Collect";
 autoCollectButton.TextColor3 = new Color3(1, 1, 1);
 autoCollectButton.TextSize = 12;
 autoCollectButton.Font = Enum.Font.Gotham;
-autoCollectButton.Parent = gamepassList; // Directly to ScrollingFrame
+autoCollectButton.Active = true;
+autoCollectButton.Visible = true;
+autoCollectButton.Parent = gamepassList;
 
 const vipButton = new Instance("TextButton");
 vipButton.Name = "VIP";
@@ -821,6 +832,8 @@ vipButton.Text = "VIP Zone";
 vipButton.TextColor3 = new Color3(1, 1, 1);
 vipButton.TextSize = 12;
 vipButton.Font = Enum.Font.Gotham;
+vipButton.Active = true;
+vipButton.Visible = true;
 vipButton.Parent = gamepassList;
 
 // Add corners to buttons
@@ -832,7 +845,13 @@ vipButton.Parent = gamepassList;
 
 // Gamepass purchase handlers
 doubleCashButton.MouseButton1Click.Connect(() => {
+  print(
+    `[Client] 2× Cash button clicked! Gamepass ID: ${GAMEPASS_IDS.DOUBLE_CASH}`
+  );
   if (GAMEPASS_IDS.DOUBLE_CASH > 0) {
+    print(
+      `[Client] Prompting gamepass purchase for ID: ${GAMEPASS_IDS.DOUBLE_CASH}`
+    );
     MarketplaceService.PromptGamePassPurchase(player, GAMEPASS_IDS.DOUBLE_CASH);
   } else {
     warn("[Client] 2× Cash gamepass ID not set in MonetizationConfig");
@@ -840,7 +859,13 @@ doubleCashButton.MouseButton1Click.Connect(() => {
 });
 
 autoCollectButton.MouseButton1Click.Connect(() => {
+  print(
+    `[Client] Auto Collect button clicked! Gamepass ID: ${GAMEPASS_IDS.AUTO_COLLECT}`
+  );
   if (GAMEPASS_IDS.AUTO_COLLECT > 0) {
+    print(
+      `[Client] Prompting gamepass purchase for ID: ${GAMEPASS_IDS.AUTO_COLLECT}`
+    );
     MarketplaceService.PromptGamePassPurchase(
       player,
       GAMEPASS_IDS.AUTO_COLLECT
@@ -851,7 +876,13 @@ autoCollectButton.MouseButton1Click.Connect(() => {
 });
 
 vipButton.MouseButton1Click.Connect(() => {
+  print(
+    `[Client] VIP Zone button clicked! Gamepass ID: ${GAMEPASS_IDS.VIP_ZONE}`
+  );
   if (GAMEPASS_IDS.VIP_ZONE > 0) {
+    print(
+      `[Client] Prompting gamepass purchase for ID: ${GAMEPASS_IDS.VIP_ZONE}`
+    );
     MarketplaceService.PromptGamePassPurchase(player, GAMEPASS_IDS.VIP_ZONE);
   } else {
     warn("[Client] VIP Zone gamepass ID not set in MonetizationConfig");

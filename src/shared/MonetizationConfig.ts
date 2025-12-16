@@ -3,9 +3,9 @@
  * Replace with your actual gamepass IDs when ready
  */
 export const GAMEPASS_IDS = {
-	DOUBLE_CASH: 0, // Replace with actual gamepass ID
-	AUTO_COLLECT: 0, // Replace with actual gamepass ID
-	VIP_ZONE: 0, // Replace with actual gamepass ID
+	DOUBLE_CASH: 1634765178, // 2x Pass
+	AUTO_COLLECT: 1634981156, // Auto Collect
+	VIP_ZONE: 1634337333, // VIP Zone Access
 };
 
 /**
